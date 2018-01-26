@@ -65,348 +65,145 @@ static void usage(const char *progname) {
     fprintf(stderr, "  %s -f conffile\n", progname);
 }
 
-int make_reply (message_t *reply, message_t *request, int fd, int id) {
-	int ret = 0, out=-1;
+queue_t *make_reply (message_t *request, message_t *ack, message_t *reply, message_data_t *filedata, int *ackData, int fd) {
+	int ret = OP_FAIL;
+	queue_t *fds = create_queue();
+	*ackData = 0;
 	switch(request->hdr.op) {
 		case REGISTER_OP: {
-			LOCK(&fd_locks[fd%13]);
 			char *buf;
 			int n_users;
 			ret = add_user(users, request->hdr.sender, fd);
 			buf = users_list(users, &n_users);
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_ALREADY, "");
-				out = sendHeader(fd, &(reply->hdr));
+			setHeader(&(ack->hdr), ret, "CHATTY");
+			if (ret == OP_OK) {
+				setData(&(ack->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
+				*ackData = 1;
 			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				setData(&(reply->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
-				out = sendRequest(fd, reply);
-			}
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-				fflush(stdout);
 			free(buf);
-			UNLOCK(&fd_locks[fd%13]);
 		} break;
 
 		case CONNECT_OP: {
-			LOCK(&fd_locks[fd%13]);
 			char *buf;
 			int n_users;
-			fprintf(stdout, "sono %s\n", request->hdr.sender);
-			fflush(stdout);
-			set_online(users, request->hdr.sender, fd);
-				fprintf(stdout, "retschifo22222valwehwhwhehwoi\n");
+			ret = set_online(users, request->hdr.sender, fd);
 			buf = users_list(users, &n_users);
-				fprintf(stdout, "retschifo333332valwehwhwhehwoi\n");
-			if (ret == 0){
-				setHeader(&(reply->hdr), OP_OK, "");
-				setData(&(reply->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
-				out = sendRequest(fd, reply);
+			setHeader(&(ack->hdr), ret, "CHATTY");
+			if (ret == OP_OK) {
+				setData(&(ack->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
+				*ackData = 1;
 			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_NICK_UNKNOWN, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
 			free(buf);
-			UNLOCK(&fd_locks[fd%13]);
 		} break;
 
 		case POSTTXT_OP: {
-			LOCKALL(fd_locks, 13);
 			int ret2;
-			queue_t *fds = create_queue();
 			ret = send_text(users, request->hdr.sender, request->data.hdr.receiver, request->data.buf, fds);
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-				for (int i=0; i<fds->len; i++) {
-					int rec_fd = take_ele(fds);
-					fprintf(stdout, "Worker %d: Invio messaggio a fd %d\n", id, rec_fd);
-					fflush(stdout);
-					setHeader(&(reply->hdr), TXT_MESSAGE, request->hdr.sender);
-					setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
-					if( (ret2 = sendRequest(rec_fd, reply)) == 0) {
-						set_offline(users, request->data.hdr.receiver);
-						close(rec_fd);
-						break;
-					}
-					fprintf(stdout, "Worker %d: Messaggio inviato a fd %d\n", id, rec_fd);
-					fflush(stdout);
-				}
+			setHeader(&(ack->hdr), ret, "CHATTY");
+			if (ret == OP_OK) {
+				setHeader(&(reply->hdr), TXT_MESSAGE, request->hdr.sender);
+				setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
 			}
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_UNKNOWN, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			if (ret == 2) {
-				setHeader(&(reply->hdr), OP_MSG_TOOLONG, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			delete_queue(fds);
-			UNLOCKALL(fd_locks, 13);
 		} break;
 
 		case POSTTXTALL_OP: {
-			LOCKALL(fd_locks, 13);
-			int ret2;
-			queue_t *fds = create_queue();
 			ret = send_text_all(users, request->hdr.sender, request->data.buf, fds);
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-				for (int i=0; i<fds->len; i++) {
-					int rec_fd = take_ele(fds);
-					fprintf(stdout, "Worker %d: Invio messaggio a fd %d\n", id, rec_fd);
-					fflush(stdout);
-					setHeader(&(reply->hdr), TXT_MESSAGE, request->hdr.sender);
-					setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
-					if( (ret2 = sendRequest(rec_fd, reply)) == 0) {
-						close(rec_fd);
-						break;
-					}
-				}
+			setHeader(&(ack->hdr), ret, "CHATTY");
+			if (ret == OP_OK) {
+				setHeader(&(reply->hdr), TXT_MESSAGE, request->hdr.sender);
+				setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
 			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_UNKNOWN, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			delete_queue(fds);
-			UNLOCKALL(fd_locks, 13);
 		} break;
 
 		case POSTFILE_OP: {
-			int ret2;
-			LOCKALL(fd_locks, 13);
-			message_data_t *filedata = malloc(sizeof(message_data_t));
-			out = readData(fd, filedata);
-			fprintf(stdout, "filelen 1 %d\n", filedata->hdr.len);
-			fflush(stdout);
-			queue_t *fds = create_queue();
 			ret = send_file(users, request->hdr.sender, request->data.hdr.receiver, request->data.buf, filedata->buf, filedata->hdr.len, fds, conf_data->files_path, conf_data->max_file_size);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-				for (int i=0; i<fds->len; i++) {
-					int rec_fd = take_ele(fds);
-					fprintf(stdout, "Worker %d: Invio notifica file disponibile a fd %d\n", id, rec_fd);
-					setHeader(&(reply->hdr), FILE_MESSAGE, request->hdr.sender);
-					setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
-					if( (ret2 = sendRequest(rec_fd, reply)) == 0) {
-						set_offline(users, request->data.hdr.receiver);
-						close(rec_fd);
-						break;
-					}
-				}
+				setHeader(&(reply->hdr), FILE_MESSAGE, request->hdr.sender);
+				setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
 			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_UNKNOWN, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			if (ret == 2) {
-				setHeader(&(reply->hdr), OP_MSG_TOOLONG, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			free(filedata);
-			delete_queue(fds);
-			UNLOCKALL(fd_locks, 13);
 		} break;
 
 		case GETFILE_OP: {
-			LOCK(&fd_locks[fd%13]);
-			char *filedata = NULL;
+			char *file;
 			int filelen;
-			ret = get_file(users, request->hdr.sender, request->data.buf, filedata, &filelen, conf_data->files_path);
-			fprintf(stdout, "filelen 2 %d\n", filelen);
-			fflush(stdout);
+			ret = get_file(users, request->hdr.sender, request->data.buf, file, &filelen, conf_data->files_path);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				setData(&(reply->data), "", filedata, filelen);
-				out = sendRequest(fd, reply);
+				setData(&(ack->data), "", file, filelen);
+				*ackData = 1;
 			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_UNKNOWN, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			free(filedata);
-			UNLOCK(&fd_locks[fd%13]);
+			free(file);
 		} break;
 
 		case GETPREVMSGS_OP: {
-			LOCK(&fd_locks[fd%13]);
 			int n_msgs=0, n_files=0, n=0;
 			char *msgs=NULL, *files=NULL;
 			ret = get_history(users, request->hdr.sender, &n_msgs, &n_files, &msgs, &files);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			n = n_msgs + n_files;
+			free(reply);
+			reply = malloc(n*sizeof(message_t);
 			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				setData(&(reply->data), "server", (char *)&n, sizeof(n)); 
-				out = sendRequest(fd, reply);
+				setData(&(ack->data), "", (char *)&n, sizeof(n)); 
+				*ackData = 1;
 				for (int i=0; i<n_msgs; i++) {
-					setHeader(&(reply->hdr), TXT_MESSAGE, "");
-					setData(&(reply->data), "server", msgs+i*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
-					if ( (out = sendRequest(fd, reply)) == 0) {
-						break;
-					}
+					setHeader(&(reply[i].hdr), TXT_MESSAGE, "");
+					setData(&(reply[i].data), "server", msgs+i*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
 				}
 				for (int i=0 ; i<n_files; i++) {
-					setHeader(&(reply->hdr), FILE_MESSAGE, "");
-					setData(&(reply->data), "server", files+i*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
-					if ( (out = sendRequest(fd, reply)) == 0) {
-						break;
-					}
+					setHeader(&(reply[i]->hdr), FILE_MESSAGE, "");
+					setData(&(reply[i]->data), "server", files+i*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
 				}
-			}
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_UNKNOWN, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-				fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
 			}
 			free(msgs);
 			free(files);
-			UNLOCK(&fd_locks[fd%13]);
 			} break;
 
 		case USRLIST_OP: {
-			LOCK(&fd_locks[fd%13]);
 			char *buf;
 			int n_users;
 			buf = users_list(users, &n_users);
-			setHeader(&(reply->hdr), OP_OK, "");
-			setData(&(reply->data), "server", buf, n_users*(MAX_NAME_LENGTH+1));
-			out = sendRequest(fd, reply);
+			setHeader(&(ack->hdr), OP_OK, "CHATTY");
+			setData(&(ack->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
+			*ackData = 1;
 			free(buf);
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			UNLOCK(&fd_locks[fd%13]);
 			} break;
 
 		case UNREGISTER_OP: {
-			LOCK(&fd_locks[fd%13]);
 			ret = delete_user(users, request->hdr.sender);
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			UNLOCK(&fd_locks[fd%13]);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			} break;
 
 		case DISCONNECT_OP: {
-			LOCK(&fd_locks[fd%13]);
 			ret = set_offline(users, request->hdr.sender);
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			UNLOCK(&fd_locks[fd%13]);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			} break;
 
 		case CREATEGROUP_OP: {
-			LOCK(&fd_locks[fd%13]);
 			ret = add_group(users, request->hdr.sender, request->data.hdr.receiver);
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-				}
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_ALREADY, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			UNLOCK(&fd_locks[fd%13]);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			} break;
 
 		case ADDGROUP_OP: {
-			LOCK(&fd_locks[fd%13]);
 			ret = join_group(users, request->hdr.sender, request->data.hdr.receiver);
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == 1) {
-				setHeader(&(reply->hdr), OP_NICK_UNKNOWN, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			UNLOCK(&fd_locks[fd%13]);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			} break;
 
 		case DELGROUP_OP: {
-			LOCK(&fd_locks[fd%13]);
 			ret = leave_group(users, request->hdr.sender, request->data.hdr.receiver);
-			if (ret == 0) {
-				setHeader(&(reply->hdr), OP_OK, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			if (ret == -1) {
-				setHeader(&(reply->hdr), OP_FAIL, "");
-				out = sendHeader(fd, &(reply->hdr));
-			}
-			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, reply->hdr.op, fd);
-			UNLOCK(&fd_locks[fd%13]);
+			setHeader(&(ack->hdr), ret, "CHATTY");
 			} break;
 
 		default: {
 			PRINT("SERVER: Rischiesta sconosciuta")
 			} break;
 	}
-	return out;
+	return fds;
 }
 
 void *worker(void *name) {
-	int ret=0, id = *(int *)name;
+	int id = *(int *)name;
 
 	while (1) {
 		LOCK(&queue_lock)
@@ -427,25 +224,43 @@ void *worker(void *name) {
 			}
 		LOCK(&quit_lock)
 		}
-		//prendo file desciptor dalla coda
+		//prendo un file desciptor dalla coda
 		UNLOCK(&quit_lock)
 		int fd = take_ele(pending_requests);
 		UNLOCK(&queue_lock)
-		message_t *reply = malloc(sizeof(message_t)), *request = malloc(sizeof(message_t));
+		message_t *request, *ack, *reply;
+		message_data_t *filedata;
+		int ret = 0, ackData = 0;
+		queue_t *fds;
 		//leggo header della richiesta
-//		LOCK(&fd_locks[fd%13]);
 		ret = readMsg(fd, request);
-		if(ret > 0) {
-			//produco una risposta
+		if(ret == 1) {
+			if (request->hdr.op == POSTFILE_OP)
+				//devo leggere il contenuto del file
+				ret = readData(fd, filedata);
 			fprintf(stdout, "WORKER %d: Eseguo op %d su fd %d\n", id, request->hdr.op, fd);
-			ret = make_reply(reply, request, fd, id);
-			//se il client non ha finito, reinserisco il file descriptor nella coda
-			if (ret > 0) {
-				LOCK(&queue_lock);
-				insert_ele(pending_requests, fd);
-				UNLOCK(&queue_lock);
+			//eseguo la riichiesta
+			fds = make_reply(request, ack, reply, filedata, ackData, fd);
+			//invio ack
+			if (ackData = 1)
+				ret = sendRequest(fd, ack);
+			else
+				ret = sendHeader(fd, &(ack->hdr));
+			//se il client ha chiuso la connessione chiudo il file descriptor
+			if (ret == 0) {
+				fprintf(stdout, "SERVER: Connessione su fd %d chiusa");
+				close(fd);
+				set_offline(users, request->hdr.sender);
+				continue;
 			}
-			free(request->data.buf);
+
+			switch(request->hdr.op) {
+				case POSTTXT_OP: {
+				} break;
+
+				case POSTTXTALL_OP: {
+				} break;
+
 		}
 		free(reply);
 		//se la connessione è chiusa, disconnetto l'utente e chiudo il file descriptor

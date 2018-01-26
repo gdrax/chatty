@@ -19,6 +19,7 @@
 #include "icl_hash.h"
 #include "config.h"
 #include "string_list.h"
+#include "ops.h"
 
 
 //acquisisce la lock per un utente
@@ -163,7 +164,7 @@ int destroy_table(users_table_t *table) {
 int add_user(users_table_t *table, char *username, int fd) {
 	if (!username || !table || fd < 0) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
@@ -171,7 +172,7 @@ int add_user(users_table_t *table, char *username, int fd) {
 		//utente già presente
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks);
-		return 1;
+		return OP_NICK_ALREADY;
 	}
 	//creo nuovo utente
 	chat_user_t *new;
@@ -182,45 +183,45 @@ int add_user(users_table_t *table, char *username, int fd) {
 	if ((new->msgs = createMsgList(table->history)) == NULL) {
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks);
-		return -1;
+		return OP_FAIL;
 	}
 	if (!icl_hash_insert(table->users, new->username, new)) {
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks);
-		return -1;
+		return OP_FAIL;
 	}
 	UNLOCKUSER(username, table->u_locks, table->locks);
 /*	icl_hash_dump(stdout, table->users);*/
 /*	fflush(stdout);*/
-	return 0;
+	return OP_OK;
 }
 
 int delete_user(users_table_t *table, char *username) {
 	if (!username || !table) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
 	//se l'utente non è registrato non faccio nulla
 	if (!CHECKNAME(table->users, username, user)) {
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return 0;
+		return OP_OK;
 	}
 	int ret;
 	if ((ret = icl_hash_delete(table->users, username, NULL, freeUser)) != 0) {
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks);
-		return -1;
+		return OP_FAIL;
 	}
 	UNLOCKUSER(username, table->u_locks, table->locks)
-	return 0;
+	return OP_OK;
 }
 
 int add_group(users_table_t *table, char *owner, char *groupname) {
 	if (!owner || !groupname || !table) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(owner, table->u_locks, table->locks)
 	LOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
@@ -231,7 +232,7 @@ int add_group(users_table_t *table, char *owner, char *groupname) {
 		table->errori++;
 		UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 		UNLOCKUSER(owner, table->u_locks, table->locks)
-		return 1;
+		return OP_NICK_ALREADY;
 	}
 	//se l'utente è registrato creo il nuovo gruppo
 	if (CHECKNAME(table->users, owner, user)) {
@@ -242,7 +243,7 @@ int add_group(users_table_t *table, char *owner, char *groupname) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(owner, table->u_locks, table->locks)
-			return -1;
+			return OP_FAIL;
 		}
 		strncpy(new->owner, owner, strlen(owner)+1);
 		//aggiungo subito il proprietario tra i membri
@@ -251,24 +252,24 @@ int add_group(users_table_t *table, char *owner, char *groupname) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(owner, table->u_locks, table->locks)
-			return -1;
+			return OP_FAIL;
 		}
 		//aggiungo gruppo alla tabella hash
 		if (!icl_hash_insert(table->groups, new->groupname, new)) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(owner, table->u_locks, table->locks)
-			return -1;
+			return OP_FAIL;
 		}
 		UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 		UNLOCKUSER(owner, table->u_locks, table->locks)
-		return 0;
+		return OP_OK;
 	}
 	//l'owner non è registrato
 	table->errori++;
 	UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 	UNLOCKUSER(owner, table->u_locks, table->locks)
-	return 1;
+	return OP_NICK_UNKNOWN;
 }
 
 int remove_group(users_table_t *table, char *groupname) {
@@ -293,7 +294,7 @@ int remove_group(users_table_t *table, char *groupname) {
 int join_group(users_table_t *table, char *username, char *groupname) {
 	if (!table || !username || !groupname) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	LOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
@@ -304,22 +305,25 @@ int join_group(users_table_t *table, char *username, char *groupname) {
 		table->errori++;
 		UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return 1;
+		return OP_NICK_UNKNOWN;
 	}
 	else {
-		int ret = addString(group->members, user->username);
-		if (ret != 0)
+		if ((ret = addString(group->members, user->username)) != 0)
 			table->errori++;
+			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
+			UNLOCKUSER(username, table->u_locks, table->locks)
+			return OP_FAIL;
+		}
 		UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return ret;
+		return OP_OK;
 	}
 }
 
 int leave_group(users_table_t *table, char *username, char *groupname) {
 	if (!table || !username || !groupname) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	LOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
@@ -329,22 +333,23 @@ int leave_group(users_table_t *table, char *username, char *groupname) {
 		//user o gruppo non registrati
 		UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return 0;
+		return OP_OK;
 	}
 	else {
-		int ret = removeString(group->members, username);
-		if (ret != 0)
+		if((ret = removeString(group->members, username)) != 0) {
 			table->errori++;
-		UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
-		UNLOCKUSER(username, table->u_locks, table->locks)
-		return ret;
+			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
+			UNLOCKUSER(username, table->u_locks, table->locks)
+			return OP_FAIL;
+		}
+		return OP_OK;
 	}
 }
 
 int set_online(users_table_t *table, char *username, int fd) {
 	if (!table || !username || fd < 0) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
@@ -352,18 +357,18 @@ int set_online(users_table_t *table, char *username, int fd) {
 		user->online = fd;
 		table->users_online++;
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return 0;
+		return OP_OK;
 	}
 	//user non registrato
 	table->errori++;
 	UNLOCKUSER(username, table->u_locks, table->locks)
-	return 1;
+	return OP_NICK_UNKNOWN;
 }
 
 int set_offline(users_table_t *table, char *username) {
 	if (!table || !username) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
@@ -371,22 +376,22 @@ int set_offline(users_table_t *table, char *username) {
 		user->online = -1;
 		table->users_online--;
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return 0;
+		return OP_OK;
 	}
 	//user non registrato
 	table->errori++;
 	UNLOCKUSER(username, table->u_locks, table->locks)
-	return 1;
+	return OP_NICK_UNKNOWN;
 }
 
 int send_text(users_table_t *table, char *sender, char *receiver, char *text, queue_t *fds) {
 	if (!table || !sender || !receiver || !text || !fds) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	if (strlen(text) > MAX_MSG_LENGTH) {
 		table->errori++;
-		return 2;
+		return OP_MSG_TOOLONG;
 	}
 	//controllo se il receiver è un gruppo
 	LOCKGROUP(receiver, table->u_locks, table->g_locks, table->locks)
@@ -400,13 +405,13 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 			//mittente non registrato
 			table->errori++;
 			UNLOCKUSER(sender, table->u_locks, table->locks)
-			return 1;
+			return OP_NICK_UNKNOWN;
 		}
 		if (searchString(group->members, sender) == 0) {
 			//mittente non iscritto al gruppo
 			table->errori++;
 			UNLOCKUSER(sender, table->u_locks, table->locks)
-			return 1;
+			return OP_NICK_UNKNOWN;
 		}
 		UNLOCKUSER(sender, table->u_locks, table->locks)
 		//mittente e gruppo sono registrati memorizzo messaggi e prendo i file descriptor degli utenti online
@@ -427,7 +432,7 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 						if ((ret = addMsg(user->msgs, text, sender, 1, 1) != 0)) {
 							table->errori++;
 							UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-							return -1;
+							return OP_FAIL;
 						}
 					}
 					else {
@@ -435,47 +440,56 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 						if ((ret = addMsg(user->msgs, text, sender, 1, 0) != 0)) {
 							table->errori++;
 							UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-							return -1;
+							return OP_FAIL;
 						}
 					}
 				}
-				//se l'utente non è registrato lo elimino dal gruppo
+				//se un utente non è più registrato lo elimino dal gruppo
 				else
 					removeString(group->members, username);
 			}
 		}
 		free(username);
 		UNLOCKALL(table->locks, table->u_locks+table->g_locks);
-		return 0;
+		return OP_OK;
 	}
 	//invio messaggio a utente singolo
 	else {
 		UNLOCKGROUP(receiver, table->u_locks, table->g_locks, table->locks)
 		if (strncmp(sender, receiver, MAX_NAME_LENGTH+1) == 0)
 			//non è possibile mandare messaggi a se stessi
-			return 0;
+			return OP_OK;
 		LOCKINORDER(sender, receiver, table->u_locks, table->locks);
 		chat_user_t *usender, *ureceiver;
 		if (!CHECKNAME(table->users, sender, usender) || !CHECKNAME(table->users, receiver, ureceiver)) {
 			//mittente o destinatario non registrati
 			table->errori++;
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return 1;
+			return OP_NICK_UNKNOWN;
 		}
 		else {//fprintf(stdout, "devo mandare a %s con fd %d, io sono %s con df %d\n", ureceiver->username, ureceiver->online, usender->username, usender->online);
 				//fflush(stdout);
+			int ret;
 			if (ureceiver->online != -1) {
 				table->m_consegnati++;
 				insert_ele(fds, ureceiver->online);
 				//fprintf(stdout, "fd %d\n", ureceiver->online);
-				addMsg(ureceiver->msgs, text, sender, 1, 1);
+				if ((ret = addMsg(ureceiver->msgs, text, sender, 1, 1)) != 0) {
+					table->errori++;
+					UNLOCKINORDER(sender, receiver, table->u_locks, table->locks)
+					return OP_FAIL;
+				}
 			}
 			else {
 				table->m_in_attesa++;
-				addMsg(ureceiver->msgs, text, sender, 1, 0);
+				if ((ret = addMsg(ureceiver->msgs, text, sender, 1, 0)) != 0) {
+					table->errori++;
+					UNLOCKINORDER(sender, receiver, table->u_locks, table->locks)
+					return OP_FAIL;
+				}
 			}
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return 0;
+			return OP_OK;
 		}
 	}
 }
@@ -483,11 +497,11 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 int send_text_all(users_table_t *table, char *sender, char *text, queue_t *fds) {
 	if (!table || !sender || !text || !fds) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	if (strlen(text) > MAX_MSG_LENGTH) {
 		table->errori++;
-		return 2;
+		return OP_MSG_TOOLONG;
 	}
 	chat_user_t *usender;
 	LOCKALL(table->locks, table->u_locks+table->g_locks)
@@ -495,9 +509,9 @@ int send_text_all(users_table_t *table, char *sender, char *text, queue_t *fds) 
 		//mittente non registrato
 		table->errori++;
 		UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-		return 1;
+		return OP_NICK_UNKNOWN;
 	}
-	int i;
+	int i, ret;
 	icl_entry_t *tmp;
 	char *key;
 	chat_user_t *user;
@@ -507,28 +521,36 @@ int send_text_all(users_table_t *table, char *sender, char *text, queue_t *fds) 
 			if (user->online != -1) {
 				table->m_consegnati++;
 				insert_ele(fds, user->online);
-				addMsg(user->msgs, text, sender, 1, 1);
+				if ((ret == addMsg(user->msgs, text, sender, 1, 1)) != 0) {
+					table->errori++;
+					UNLOCKALL(table->locks, table->u_locks+table->g_locks)
+					return OP_FAIL;
+				}
 			}
 			else {
 				table->m_in_attesa++;
-				addMsg(user->msgs, text, sender, 1, 0);
+				if ((ret == addMsg(user->msgs, text, sender, 1, 1)) != 0) {
+					table->errori++;
+					UNLOCKALL(table->locks, table->u_locks+table->g_locks)
+					return OP_FAIL;
+				}
 			}
 			UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-			return 0;
+			return OP_OK;
 		}
 	}
 	UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-	return 0;
+	return OP_OK;
 }
 
 int send_file(users_table_t *table, char *sender, char *receiver, char *name, char *data, int writelen, queue_t *fds, char *dirpath, int max_size) {
 	if (!table || !sender || !receiver || !name || !data || !dirpath) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	if (strlen(data) > max_size) {
 		table->errori++;
-		return -1;
+		return OP_MSG_TOOLONG;
 	}
 	//controllo se il receiver è un gruppo
 	LOCKGROUP(receiver, table->u_locks, table->g_locks, table->locks)
@@ -542,13 +564,13 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 			//mittente non registrato
 			table->errori++;
 			UNLOCKUSER(sender, table->u_locks, table->locks)
-			return 1;
+			return OP_NICK_UNKNOWN;
 		}
 		if (searchString(group->members, sender) == 0) {
 			//mittente non iscritto al gruppo
 			table->errori++;
 			UNLOCKUSER(sender, table->u_locks, table->locks)
-			return 1;
+			return OP_NICK_UNKNOWN;
 		}
 		UNLOCKUSER(sender, table->u_locks, table->locks)
 		//mittente e gruppo sono registrati memorizzo messaggi e prendo i file descriptor degli utenti online
@@ -562,7 +584,7 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 		if (ret == -1) {
 			table->errori++;
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return -1;
+			return OP_FAIL;
 		}
 		for (int i=0; i<group->members->size; i++) {
 			memset(username, 0, (MAX_NAME_LENGTH+1)*sizeof(char));
@@ -580,12 +602,12 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 					if ((ret = addMsg(user->msgs, name, sender, 0, 0) != 0)) {
 						table->errori++;
 						UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-						return -1;
+						return OP_FAIL;
 					}
 					UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-					return 0;
+					return OP_OK;
 				}
-				//se l'utente non è registrato lo elimino dal gruppo
+				//se un utente non è più registrato lo elimino dal gruppo
 				else
 					removeString(group->members, username);
 			}
@@ -593,20 +615,20 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 		free(filepath);
 		free(username);
 		UNLOCKALL(table->locks, table->u_locks+table->g_locks);
-		return 0;
+		return OP_OK;
 	}
 	else {
 		UNLOCKGROUP(receiver, table->u_locks, table->g_locks, table->locks)
 		if (strncmp(sender, receiver, MAX_NAME_LENGTH+1) == 0)
 			//non è possibile mandare messaggi a se stessi
-			return 0;
+			return OP_OK;
 		LOCKINORDER(sender, receiver, table->u_locks, table->locks);
 		chat_user_t *usender, *ureceiver;
 		if (!CHECKNAME(table->users, sender, usender) || !CHECKNAME(table->users, receiver, ureceiver)) {
 			//mittenete o destinatario non registrati
 			table->errori++;
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return 1;
+			return OP_NICK_UNKNOWN;
 		}
 		else {
 			//creo messaggio
@@ -617,7 +639,7 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 			if (ret == -1) {
 				table->errori++;
 				UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-				return -1;
+				return OP_FAIL;
 			}
 			if (ureceiver->online != -1) {
 				insert_ele(fds, ureceiver->online);
@@ -627,7 +649,7 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 			close(fd);
 			free(filepath);
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return 0;
+			return OP_OK;
 		}
 	}
 }
@@ -635,7 +657,7 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 int get_file(users_table_t *table, char *username, char *name, char *datadest, int *filelen, char *dirpath) {
 	if (!table || !username || !name || !dirpath) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
@@ -643,7 +665,7 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 		//user non registrato
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return 1;
+		return OP_NICK_UNKNOWN;
 	}
 	int ret=-1, fd=-1;
 	char *filepath = make_path(name, dirpath);
@@ -652,7 +674,7 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 	if (ret == -1) {
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return -1;
+		return OP_FAIL;
 	}
 	if (S_ISREG(info.st_mode)) {
 		if ((fd = open(filepath, O_RDONLY)) != -1) {
@@ -665,19 +687,19 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 				close(fd);
 				table->errori++;
 				UNLOCKUSER(username, table->u_locks, table->locks)
-				return -1;
+				return OP_FAIL;
 			}
 			table->f_consegnati++;
 			close(fd);
 			free(filepath);
 			UNLOCKUSER(username, table->u_locks, table->locks)
-			return 0;
+			return OP_OK;
 		}
 		else {//open fail
 			table->errori++;
 			UNLOCKUSER(username, table->u_locks, table->locks)
 			free(filepath);
-			return -1;
+			return OP_FAIL;
 		}
 	}
 	//file non reg
@@ -685,7 +707,7 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks)
 		free(filepath);
-		return -1;
+		return OP_FAIL;
 	}
 }
 
@@ -693,7 +715,7 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 int get_history(users_table_t *table, char *username, int *nt, int *nf, char **msgs, char **files) {
 	if (!table || !username) {
 		table->errori++;
-		return -1;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
@@ -710,12 +732,12 @@ int get_history(users_table_t *table, char *username, int *nt, int *nf, char **m
 		strncpy(*files, list+n1*(MAX_MSG_LENGTH+1), n2*(MAX_MSG_LENGTH+1));
 		free(list);
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return 0;
+		return OP_OK;
 	}
 	//user non registrato
 	table->errori++;
 	UNLOCKUSER(username, table->u_locks, table->locks)
-	return -1;
+	return OP_NICK_UNKNOWN;
 }
 
 char *users_list(users_table_t *table, int *n) {
