@@ -97,7 +97,6 @@ queue_t *make_reply (message_t *request, message_t *ack, message_t *reply, messa
 		} break;
 
 		case POSTTXT_OP: {
-			int ret2;
 			ret = send_text(users, request->hdr.sender, request->data.hdr.receiver, request->data.buf, fds);
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
@@ -144,7 +143,7 @@ queue_t *make_reply (message_t *request, message_t *ack, message_t *reply, messa
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			n = n_msgs + n_files;
 			free(reply);
-			reply = malloc(n*sizeof(message_t);
+			reply = malloc(n*sizeof(message_t));
 			if (ret == 0) {
 				setData(&(ack->data), "", (char *)&n, sizeof(n)); 
 				*ackData = 1;
@@ -152,9 +151,9 @@ queue_t *make_reply (message_t *request, message_t *ack, message_t *reply, messa
 					setHeader(&(reply[i].hdr), TXT_MESSAGE, "");
 					setData(&(reply[i].data), "server", msgs+i*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
 				}
-				for (int j=0 ; j<n_files; i++, j++) {
-					setHeader(&(reply[i]->hdr), FILE_MESSAGE, "");
-					setData(&(reply[i]->data), "server", files+j*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
+				for (int j=0, i=n_msgs ; j<n_files; i++, j++) {
+					setHeader(&(reply[i].hdr), FILE_MESSAGE, "");
+					setData(&(reply[i].data), "server", files+j*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
 				}
 			}
 			free(msgs);
@@ -248,15 +247,15 @@ void *worker(void *name) {
 				ret = readData(fd, filedata);
 			fprintf(stdout, "WORKER %d: Eseguo op %d su fd %d\n", id, request->hdr.op, fd);
 			//eseguo la riichiesta
-			fds = make_reply(request, ack, reply, filedata, ackData, fd);
+			fds = make_reply(request, ack, reply, filedata, &ackData, fd);
 			//invio ack
-			if (ackData = 1)
+			if (ackData == 1)
 				ret = sendRequest(fd, ack);
 			else
 				ret = sendHeader(fd, &(ack->hdr));
 			//se il client ha chiuso la connessione chiudo il file descriptor
 			if (ret == 0) {
-				fprintf(stdout, "SERVER: Connessione su fd %d chiusa");
+				fprintf(stdout, "SERVER: Connessione su fd %d chiusa", fd);
 				close(fd);
 				set_offline(users, request->hdr.sender);
 				continue;
@@ -264,28 +263,24 @@ void *worker(void *name) {
 
 			//invio le risposte che servono dopo l'ack
 			if (ack->hdr.op == OP_OK) {
-				switch(request->hdr.op) {
-					case POSTTXT_OP:
-					case POSTTXTALL_OP:
-					case POSTFILE_OP: {
-						int rec_fd;
-						while((rec_fd = take_ele(fds)) != NULL) {
-							if ((ret = sendRequest(rec_fd, reply)) == 0) {
-								fprintf(stdout, "SERVER: Connessione su fd %d chiusa", rec_fd);
-								close(rec_fd);
-							}
+				if(request->hdr.op == POSTTXT_OP || request->hdr.op == POSTTXTALL_OP || request->hdr.op == POSTFILE_OP) {
+					int rec_fd;
+					while((rec_fd = take_ele(fds)) != -1) {
+						if ((ret = sendRequest(rec_fd, reply)) == 0) {
+							fprintf(stdout, "SERVER: Connessione su fd %d chiusa", rec_fd);
+							close(rec_fd);
 						}
-					} break;
-
-					case GETPREVMSGS_OP: {
-						int n = sizeof(reply)/sizeof(message_t);
-						for (int i=0; i<n; i++) {
-							if ((ret = sendRequest(rec_fd, reply)) == 0) {
-								fprintf(stdout, "SERVER: Connessione su fd %d chiusa", rec_fd);
-								close(rec_fd);
-							}
+					}
+				}
+				else if(request->hdr.op == GETPREVMSGS_OP) {
+					int n = sizeof(reply)/sizeof(message_t);
+					for (int i=0; i<n; i++) {
+						if ((ret = sendRequest(fd, reply)) == 0) {
+							fprintf(stdout, "SERVER: Connessione su fd %d chiusa", fd);
+							close(fd);
 						}
-					} break;
+					}
+					
 				}
 			}
 		}

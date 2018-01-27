@@ -308,6 +308,7 @@ int join_group(users_table_t *table, char *username, char *groupname) {
 		return OP_NICK_UNKNOWN;
 	}
 	else {
+		int ret;
 		if ((ret = addString(group->members, user->username)) != 0)
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
