@@ -309,7 +309,7 @@ int join_group(users_table_t *table, char *username, char *groupname) {
 	}
 	else {
 		int ret;
-		if ((ret = addString(group->members, user->username)) != 0)
+		if ((ret = addString(group->members, user->username)) != 0) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(username, table->u_locks, table->locks)
@@ -337,6 +337,7 @@ int leave_group(users_table_t *table, char *username, char *groupname) {
 		return OP_OK;
 	}
 	else {
+		int ret;
 		if((ret = removeString(group->members, username)) != 0) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
@@ -512,7 +513,7 @@ int send_text_all(users_table_t *table, char *sender, char *text, queue_t *fds) 
 		UNLOCKALL(table->locks, table->u_locks+table->g_locks)
 		return OP_NICK_UNKNOWN;
 	}
-	int i, ret;
+	int i, ret=-1;
 	icl_entry_t *tmp;
 	char *key;
 	chat_user_t *user;
