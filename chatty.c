@@ -231,18 +231,19 @@ void *worker(void *name) {
 		message_t *request, *ack, *reply;
 		message_data_t *filedata;
 		int ret = 0, ackData = 0;
-		queue_t *fds;
+		queue_t *fds = create_queue();
 		TRY(request, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
 		TRY(ack, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
 		TRY(reply, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
 		TRY(filedata, malloc(sizeof(message_data_t)), NULL, "malloc", NULL, 0)
 		//leggo header della richiesta
 		LOCK(&(fd_locks[fd%13]))
-		while((ret = readMsg(fd, request)) == 1) {
-			UNLOCK(&(fd_locks[fd%13]))
-			if (request->hdr.op == POSTFILE_OP)
-				//devo leggere il contenuto del file
-				ret = readData(fd, filedata);
+		ret = readMsg(fd, request);
+		if (request->hdr.op == POSTFILE_OP)
+			//devo leggere il contenuto del file
+			ret = readData(fd, filedata);
+		UNLOCK(&(fd_locks[fd%13]))
+		if (ret > 0) {
 			fprintf(stdout, "WORKER %d: Eseguo op %d su fd %d\n", id, request->hdr.op, fd);
 			//eseguo la riichiesta
 			fds = make_reply(request, ack, reply, filedata, &ackData, fd);
@@ -258,49 +259,53 @@ void *worker(void *name) {
 			}
 			UNLOCK(&(fd_locks[fd%13]))
 			fprintf(stdout, "WORKER %d: Risposta %d su fd %d\n", id, ack->hdr.op, fd);
-
-			//invio le risposte che servono dopo l'ack
-			if (ack->hdr.op == OP_OK) {
-				if(request->hdr.op == POSTTXT_OP || request->hdr.op == POSTTXTALL_OP || request->hdr.op == POSTFILE_OP) {
-					int rec_fd;
-					while((rec_fd = take_ele(fds)) != -1) {
-						LOCK(&(fd_locks[rec_fd%13]))
-						if ((ret = sendRequest(rec_fd, reply)) == 0) {
-							fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, rec_fd);
-							close(rec_fd);
-							UNLOCK(&(fd_locks[rec_fd%13]))
-							set_offline(users, request->hdr.sender);
+			if (ret > 0) {
+				//invio le risposte che servono dopo l'ack
+				if (ack->hdr.op == OP_OK) {
+					if(request->hdr.op == POSTTXT_OP || request->hdr.op == POSTTXTALL_OP || request->hdr.op == POSTFILE_OP) {
+						int rec_fd, ret2;
+						for (int i=0; i<fds->size; i++)
+							rec_fd = take_ele(fds);
+							fprintf(stdout, "quanti ne devo mandare\n");
+							fflush(stdout);
 							LOCK(&(fd_locks[rec_fd%13]))
+							if ((ret2 = sendRequest(rec_fd, reply)) == 0) {
+								fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, rec_fd);
+								close(rec_fd);
+								set_offline(users, request->hdr.sender);
+							}
+							else
+								fprintf(stdout, "WOKER %d: Invio messaggio su fd %d\n", id, rec_fd);
+							UNLOCK(&(fd_locks[rec_fd%13]))
 						}
-						else
-							fprintf(stdout, "WOKER %d: Invio messaggio su fd %d\n", id, rec_fd);
-						UNLOCK(&(fd_locks[rec_fd%13]))
 					}
-				}
-				else if(request->hdr.op == GETPREVMSGS_OP && ret == 1) {
-					int n = sizeof(reply)/sizeof(message_t);
-					for (int i=0; i<n; i++) {
-						LOCK(&(fd_locks[fd%13]))
-						if ((ret = sendRequest(fd, reply)) == 0) {
+					else if(request->hdr.op == GETPREVMSGS_OP) {
+						int n = sizeof(reply)/sizeof(message_t);
+						for (int i=0; i<n; i++) {
+							LOCK(&(fd_locks[fd%13]))
+							if ((ret = sendRequest(fd, reply)) == 0) {
+								UNLOCK(&(fd_locks[fd%13]))
+								break;
+							}
 							UNLOCK(&(fd_locks[fd%13]))
-							break;
+							fprintf(stdout, "WORKER %d: Invio messaggio su fd %d\n", id, fd);
 						}
-							UNLOCK(&(fd_locks[fd%13]))
-						fprintf(stdout, "WORKER %d: Invio messaggio su fd %d\n", id, fd);
+						
 					}
-					
 				}
 			}
+		}
+		if (ret == 0) {
+			LOCK(&(fd_locks[fd%13]))
+			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa", id, fd);
+			close(fd);
+			set_offline(users, request->hdr.sender);
+			UNLOCK(&(fd_locks[fd%13]))
 		}
 		free(request);
 		free(reply);
 		free(filedata);
 		delete_queue(fds);
-		fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa", id, fd);
-		LOCK(&(fd_locks[fd%13]))
-		close(fd);
-		UNLOCK(&(fd_locks[fd%13]))
-		set_offline(users, request->hdr.sender);
 		LOCK(&quit_lock)
 		if (quit) {
 			UNLOCK(&quit_lock)
