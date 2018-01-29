@@ -730,6 +730,12 @@ int get_history(users_table_t *table, char *username, int *nt, int *nf, char **m
 		n2 = *nf;
 		*msgs = malloc(n1*(MAX_MSG_LENGTH+1)*sizeof(char));
 		strncpy(*msgs, list, n1*(MAX_MSG_LENGTH+1));
+		char *corr = *msgs;
+		for (int j=0; j<n1; j++) {
+										fprintf(stdout, "users_table %s\n", corr);
+							fflush(stdout);
+corr += MAX_MSG_LENGTH+1;
+		}
 		*files = malloc(n2*(MAX_MSG_LENGTH+1)*sizeof(char));
 		strncpy(*files, list+n1*(MAX_MSG_LENGTH+1), n2*(MAX_MSG_LENGTH+1));
 		free(list);

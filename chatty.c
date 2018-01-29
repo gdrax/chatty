@@ -144,12 +144,16 @@ queue_t *make_reply (message_t *request, message_t *ack, message_t *reply, messa
 			n = n_msgs + n_files;
 			free(reply);
 			reply = malloc(n*sizeof(message_t));
-			if (ret == 0) {
+							fprintf(stdout, "sizeof %ld e n %d e message %ld\n", sizeof(reply), n, sizeof(message_t));
+							fflush(stdout);
+			if (ret == OP_OK) {
 				setData(&(ack->data), "", (char *)&n, sizeof(n)); 
 				*ackData = 1;
 				for (int i=0; i<n_msgs; i++) {
 					setHeader(&(reply[i].hdr), TXT_MESSAGE, "");
 					setData(&(reply[i].data), "server", msgs+i*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
+							fprintf(stdout, "vecchi messaggi %s, messsaggi vecchi %s\n", reply[i].data.buf, msgs+i*(MAX_MSG_LENGTH+1));
+							fflush(stdout);
 				}
 				for (int j=0, i=n_msgs ; j<n_files; i++, j++) {
 					setHeader(&(reply[i].hdr), FILE_MESSAGE, "");
@@ -264,8 +268,6 @@ void *worker(void *name) {
 				if (ack->hdr.op == OP_OK) {
 					if(request->hdr.op == POSTTXT_OP || request->hdr.op == POSTTXTALL_OP || request->hdr.op == POSTFILE_OP) {
 						int rec_fd, ret2;
-							fprintf(stdout, "quanti ne devo mandare %d\n", fds->len);
-							fflush(stdout);
 						for (int i=0; i<fds->len; i++) {
 							rec_fd = take_ele(fds);
 							LOCK(&(fd_locks[rec_fd%13]))
@@ -280,7 +282,7 @@ void *worker(void *name) {
 						}
 					}
 					else if(request->hdr.op == GETPREVMSGS_OP) {
-							fprintf(stdout, "quanti222 ne devo mandare %d\n", request->hdr.op);
+							fprintf(stdout, "quanti ne devo mandare %s\n", reply->data.buf);
 							fflush(stdout);
 						int n = sizeof(reply)/sizeof(message_t);
 						for (int i=0; i<n; i++) {
@@ -299,10 +301,16 @@ void *worker(void *name) {
 		}
 		if (ret == 0) {
 			LOCK(&(fd_locks[fd%13]))
-			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa", id, fd);
+			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, fd);
 			close(fd);
 			set_offline(users, request->hdr.sender);
 			UNLOCK(&(fd_locks[fd%13]))
+		}
+		else {
+			LOCK(&queue_lock)
+			insert_ele(pending_requests, fd);
+			pthread_cond_signal(&newRequest);
+			UNLOCK(&queue_lock)
 		}
 		free(request);
 		free(reply);

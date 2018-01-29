@@ -162,8 +162,22 @@ char *appendMsgList(msg_list_t *list, int *nm, int *nf) {
 	}
 	string = malloc((list->msgs+list->files)*(MAX_MSG_LENGTH+1)*sizeof(char));
 	memset(string, 0, (list->msgs+list->files)*(MAX_MSG_LENGTH+1));
-	strncat(string, msgs, m_count*(MAX_MSG_LENGTH+1));
-	strncat(string+m_count*(MAX_NAME_LENGTH+1), files, f_count*(MAX_MSG_LENGTH+1));
+		char *prec = msgs;
+		for (int j=0; j<m_count; j++) {
+			fprintf(stdout, "%d, msg_list_1 %s\n",m_count, prec);
+			fflush(stdout);
+			prec += MAX_MSG_LENGTH+1;
+		}
+	for (int j=0; j<m_count; j++) {
+		strncat(string + m_count*(MAX_NAME_LENGTH+1), msgs + m_count*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
+	}
+	char *corr = string;
+	for (int j=0; j<m_count; j++) {
+		fprintf(stdout, "msg_list_2 %s\n", corr);
+		fflush(stdout);
+		corr += MAX_MSG_LENGTH+1;
+	}
+	strncat(string+m_count*(MAX_MSG_LENGTH+1), files, f_count*(MAX_MSG_LENGTH+1));
 	*nm = m_count;
 	*nf = f_count;
 	free(msgs);
