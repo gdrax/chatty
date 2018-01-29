@@ -264,10 +264,10 @@ void *worker(void *name) {
 				if (ack->hdr.op == OP_OK) {
 					if(request->hdr.op == POSTTXT_OP || request->hdr.op == POSTTXTALL_OP || request->hdr.op == POSTFILE_OP) {
 						int rec_fd, ret2;
-						for (int i=0; i<fds->size; i++)
-							rec_fd = take_ele(fds);
-							fprintf(stdout, "quanti ne devo mandare\n");
+							fprintf(stdout, "quanti ne devo mandare %d\n", fds->len);
 							fflush(stdout);
+						for (int i=0; i<fds->len; i++) {
+							rec_fd = take_ele(fds);
 							LOCK(&(fd_locks[rec_fd%13]))
 							if ((ret2 = sendRequest(rec_fd, reply)) == 0) {
 								fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, rec_fd);
@@ -280,6 +280,8 @@ void *worker(void *name) {
 						}
 					}
 					else if(request->hdr.op == GETPREVMSGS_OP) {
+							fprintf(stdout, "quanti222 ne devo mandare %d\n", request->hdr.op);
+							fflush(stdout);
 						int n = sizeof(reply)/sizeof(message_t);
 						for (int i=0; i<n; i++) {
 							LOCK(&(fd_locks[fd%13]))
