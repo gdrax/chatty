@@ -280,17 +280,14 @@ Restituisce due stringhe contenenti le liste dei messaggi testuali e dei nomi de
 param:
 table - tabella inizializzata
 username - nome dell'utente
-nt - puntatore su cui verra restituito il numero di messaggi testuali da spedire
-nf - puntatore su cui verrà restituito il numero di nomi di file da spedire
-msgs - puntatore su cui verrà restituita la lista dei messaggi testuali da spedire
-files - puntatore su cui verrà restituita la lista dei nomi di file da spedire
+msgs - lista dove verranno restituiti i messaggi da consengare
 
 retval:
 0: successo
 -1: errore
 1: username non registrato
 */
-int get_history(users_table_t *table, char *username, int *nt, int *nf, char **msgs, char **files);
+int get_history(users_table_t *table, char *username, msg_list_t *msgs);
 
 /*
 Inserisce in sequenza i nomi degli utenti registrati in una stringa

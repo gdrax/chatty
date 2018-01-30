@@ -29,6 +29,7 @@
 #include "queue.h"
 #include "stats.h"
 #include "users_table.h"
+#include "string_list.h"
 
 /* struttura che memorizza le statistiche del server, struct statistics 
  * e' definita in stats.h.
@@ -65,7 +66,7 @@ static void usage(const char *progname) {
     fprintf(stderr, "  %s -f conffile\n", progname);
 }
 
-queue_t *make_reply (message_t *request, message_t *ack, message_t *reply, message_data_t *filedata, int *ackData, int fd) {
+queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, message_t *ack, message_t *reply, int *ackData, message_t *msgs) {
 	int ret = OP_FAIL;
 	queue_t *fds = create_queue();
 	*ackData = 0;
@@ -137,32 +138,32 @@ queue_t *make_reply (message_t *request, message_t *ack, message_t *reply, messa
 		} break;
 
 		case GETPREVMSGS_OP: {
-			int n_msgs=0, n_files=0, n=0;
-			char *msgs=NULL, *files=NULL;
-			ret = get_history(users, request->hdr.sender, &n_msgs, &n_files, &msgs, &files);
+			size_t n;
+			int i=0;
+			msg_list_t *list = createMsgList(conf_data->max_history);
+			ret = get_history(users, request->hdr.sender, list);
+			n = list->msgs + list->files;
 			setHeader(&(ack->hdr), ret, "CHATTY");
-			n = n_msgs + n_files;
-			free(reply);
-			reply = malloc(n*sizeof(message_t));
-							fprintf(stdout, "sizeof %ld e n %d e message %ld\n", sizeof(reply), n, sizeof(message_t));
-							fflush(stdout);
 			if (ret == OP_OK) {
-				setData(&(ack->data), "", (char *)&n, sizeof(n)); 
+				setData(&(ack->data), "", (char *)&n, sizeof(n));
 				*ackData = 1;
-				for (int i=0; i<n_msgs; i++) {
-					setHeader(&(reply[i].hdr), TXT_MESSAGE, "");
-					setData(&(reply[i].data), "server", msgs+i*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
-							fprintf(stdout, "vecchi messaggi %s, messsaggi vecchi %s\n", reply[i].data.buf, msgs+i*(MAX_MSG_LENGTH+1));
-							fflush(stdout);
-				}
-				for (int j=0, i=n_msgs ; j<n_files; i++, j++) {
-					setHeader(&(reply[i].hdr), FILE_MESSAGE, "");
-					setData(&(reply[i].data), "server", files+j*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
+				insert_ele(fds, n);
+				msg_t *tmp = list->head;
+				while(tmp != NULL) {
+					if (tmp->type == 1) {
+						setHeader(&(msgs[i].hdr), TXT_MESSAGE, tmp->sender);
+						setData(&(msgs[i].data), request->hdr.sender, tmp->text, MAX_MSG_LENGTH+1);
+					}
+					else {
+						setHeader(&(msgs[i].hdr), FILE_MESSAGE, tmp->sender);
+						setData(&(msgs[i].data), request->hdr.sender, tmp->text, MAX_MSG_LENGTH+1);
+					}
+					tmp = tmp->next;
+					i++;
 				}
 			}
-			free(msgs);
-			free(files);
-			} break;
+			deleteMsgList(list);
+		} break;
 
 		case USRLIST_OP: {
 			char *buf;
@@ -232,7 +233,7 @@ void *worker(void *name) {
 		UNLOCK(&quit_lock)
 		int fd = take_ele(pending_requests);
 		UNLOCK(&queue_lock)
-		message_t *request, *ack, *reply;
+		message_t *request, *ack, *reply, msgs[conf_data->max_history];
 		message_data_t *filedata;
 		int ret = 0, ackData = 0;
 		queue_t *fds = create_queue();
@@ -250,7 +251,7 @@ void *worker(void *name) {
 		if (ret > 0) {
 			fprintf(stdout, "WORKER %d: Eseguo op %d su fd %d\n", id, request->hdr.op, fd);
 			//eseguo la riichiesta
-			fds = make_reply(request, ack, reply, filedata, &ackData, fd);
+			fds = make_reply(request, filedata, fd, ack, reply, &ackData, msgs);
 			//invio ack
 			LOCK(&(fd_locks[fd%13]))
 			if (ackData == 1) {
@@ -282,19 +283,17 @@ void *worker(void *name) {
 						}
 					}
 					else if(request->hdr.op == GETPREVMSGS_OP) {
-							fprintf(stdout, "quanti ne devo mandare %s\n", reply->data.buf);
-							fflush(stdout);
-						int n = sizeof(reply)/sizeof(message_t);
-						for (int i=0; i<n; i++) {
+						for (int i=0; i<fds->len; i++) {
 							LOCK(&(fd_locks[fd%13]))
-							if ((ret = sendRequest(fd, reply)) == 0) {
+							fprintf(stdout, "string %s\n", msgs[i].data.buf);
+							if ((ret = sendRequest(fd, &(msgs[i]))) == 0) {
 								UNLOCK(&(fd_locks[fd%13]))
 								break;
 							}
+							else
+								fprintf(stdout, "WOKER %d: Invio messaggio su fd %d\n", id, fd);
 							UNLOCK(&(fd_locks[fd%13]))
-							fprintf(stdout, "WORKER %d: Invio messaggio su fd %d\n", id, fd);
 						}
-						
 					}
 				}
 			}

@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "utility.h"
+#include "ops.h"
 
 
 msg_list_t *createMsgList(int history) {
@@ -103,84 +104,18 @@ void printMsgList(msg_list_t *list) {
 	}
 }
 
-/*int appendMsgList(msg_list_t *list, int *n_msgs, int *n_files, char *msg_list, char *file_list) {*/
-/*	if (!list)*/
-/*		return -1;*/
-/*	if ((list->msgs+list->files) == 0)*/
-/*		return -1;*/
-/*	int m_count=0, f_count=0;*/
-/*	msg_t *tmp = list->head;*/
-/*	msg_list = malloc(list->msgs*(MAX_MSG_LENGTH+1)*sizeof(char));*/
-/*	file_list = malloc(list->files*(MAX_MSG_LENGTH+1)*sizeof(char));*/
-/*	memset(msg_list, 0, list->msgs*(MAX_MSG_LENGTH+1)*sizeof(char));*/
-/*	memset(file_list, 0, list->files*(MAX_MSG_LENGTH+1)*sizeof(char));*/
-/*	while(tmp != NULL) {*/
-/*		if (tmp->consegnato == 0) {*/
-/*			if (tmp->type == 1) {*/
-/*				strncat(msg_list + m_count*(MAX_MSG_LENGTH+1), tmp->text, MAX_MSG_LENGTH+1);*/
-/*				tmp->consegnato = 1;*/
-/*				m_count++;*/
-/*			}*/
-/*			else {*/
-/*				strncat(file_list + f_count*(MAX_MSG_LENGTH+1), tmp->text, MAX_MSG_LENGTH+1);*/
-/*				tmp->consegnato = 1;*/
-/*				f_count++;*/
-/*			}*/
-/*		}*/
-/*		tmp = tmp->next;*/
-/*	}*/
-/*	*n_msgs = m_count;*/
-/*	*n_files = f_count;*/
-/*	return 0;*/
-/*}*/
-char *appendMsgList(msg_list_t *list, int *nm, int *nf) {
-	if (!list)
-		return NULL;
-	if ((list->msgs+list->files) == 0)
-		return NULL;
-	char *msgs, *files, *string;
-	int m_count=0, f_count=0;
-	msg_t *tmp = list->head;
-	msgs = malloc(list->msgs*(MAX_MSG_LENGTH+1)*sizeof(char));
-	memset(msgs, 0, list->msgs*(MAX_MSG_LENGTH+1)*sizeof(char));
-	files = malloc(list->files*(MAX_MSG_LENGTH+1)*sizeof(char));
-	memset(files, 0, list->files*(MAX_MSG_LENGTH+1)*sizeof(char));
+int getMsgList(msg_list_t *src, msg_list_t *dest) {
+	if (!src || !dest)
+		return OP_FAIL;
+	if ((src->msgs+src->files) == 0)
+		return OP_OK;
+	msg_t *tmp = src->head;
 	while(tmp != NULL) {
 		if (tmp->consegnato == 0) {
-			if (tmp->type == 1) {
-				strncat(msgs + m_count*(MAX_MSG_LENGTH+1), tmp->text, MAX_MSG_LENGTH+1);
-				tmp->consegnato = 1;
-				m_count++;
-			}
-			else {
-				strncat(files + f_count*(MAX_MSG_LENGTH+1), tmp->text, MAX_MSG_LENGTH+1);
-				tmp->consegnato = 1;
-				f_count++;
-			}
+			addMsg(dest, tmp->text, tmp->sender, tmp->type, 1);
+			tmp->consegnato = 1;
 		}
 		tmp = tmp->next;
 	}
-	string = malloc((list->msgs+list->files)*(MAX_MSG_LENGTH+1)*sizeof(char));
-	memset(string, 0, (list->msgs+list->files)*(MAX_MSG_LENGTH+1));
-		char *prec = msgs;
-		for (int j=0; j<m_count; j++) {
-			fprintf(stdout, "%d, msg_list_1 %s\n",m_count, prec);
-			fflush(stdout);
-			prec += MAX_MSG_LENGTH+1;
-		}
-	for (int j=0; j<m_count; j++) {
-		strncat(string + m_count*(MAX_NAME_LENGTH+1), msgs + m_count*(MAX_MSG_LENGTH+1), MAX_MSG_LENGTH+1);
-	}
-	char *corr = string;
-	for (int j=0; j<m_count; j++) {
-		fprintf(stdout, "msg_list_2 %s\n", corr);
-		fflush(stdout);
-		corr += MAX_MSG_LENGTH+1;
-	}
-	strncat(string+m_count*(MAX_MSG_LENGTH+1), files, f_count*(MAX_MSG_LENGTH+1));
-	*nm = m_count;
-	*nf = f_count;
-	free(msgs);
-	free(files);
-	return string;
+	return OP_OK;
 }

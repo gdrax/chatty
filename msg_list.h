@@ -7,7 +7,8 @@
 #ifndef msg_list_h
 #define msg_list_h
 
-#include"config.h"
+#include "config.h"
+#include "string_list.h"
 
 /*
 Struttura di un messaggio
@@ -77,20 +78,16 @@ list - lista già inizializzata
 void printMsgList(msg_list_t *list);
 
 /*
-Inserisce messaggi e nomi di file in due stringhe
+Riempe una nuova lista con i messaggi non ancora consegnati
 
 param:
-list - lista già inizializzata
-n_msgs - numero di messaggi concatenati nella stringa restituita
-n_files - numero di file concatenati nella stringa restituita
-msgs - stringa di messaggi da consegnare
-files - stringa di nomi di file da consegnare
+src - lista contenente i messaggi di un utente
+dest - lista che conterrà i messaggi non inviati
 
 retval:
--1: errore
-0: successo
+OP_FAIL: fallimento
+OP_OK: successo
 */
-/*int appendMsgList(msg_list_t *list, int *n_msgs, int *n_files, char *msgs, char *files);*/
-char *appendMsgList(msg_list_t *list, int *nm, int *nf);
+int getMsgList(msg_list_t *src, msg_list_t *dest);
 
 #endif

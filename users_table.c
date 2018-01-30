@@ -18,7 +18,6 @@
 #include "utility.h"
 #include "icl_hash.h"
 #include "config.h"
-#include "string_list.h"
 #include "ops.h"
 
 
@@ -239,7 +238,7 @@ int add_group(users_table_t *table, char *owner, char *groupname) {
 		chat_group_t *new;
 		TRY(new, malloc(sizeof(chat_group_t)), NULL, "malloc", -1, 0)
 		strncpy(new->groupname, groupname, strlen(groupname)+1);
-		if ((new->members = createSList()) == NULL) {
+		if ((new->members = createSList(MAX_NAME_LENGTH+1)) == NULL) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(owner, table->u_locks, table->locks)
@@ -714,33 +713,19 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 }
 
 
-int get_history(users_table_t *table, char *username, int *nt, int *nf, char **msgs, char **files) {
-	if (!table || !username) {
+int get_history(users_table_t *table, char *username, msg_list_t *msgs) {
+	if (!table || !username || !msgs) {
 		table->errori++;
 		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
-	char *list;
-	int n1, n2;
+	int ret;
 	if (CHECKNAME(table->users, username, user)) {
 		//prendo i messaggi (nomi di file e testuali) che non sono stati già spediti
-		list = appendMsgList(user->msgs, nt, nf);
-		n1 = *nt;
-		n2 = *nf;
-		*msgs = malloc(n1*(MAX_MSG_LENGTH+1)*sizeof(char));
-		strncpy(*msgs, list, n1*(MAX_MSG_LENGTH+1));
-		char *corr = *msgs;
-		for (int j=0; j<n1; j++) {
-										fprintf(stdout, "users_table %s\n", corr);
-							fflush(stdout);
-corr += MAX_MSG_LENGTH+1;
-		}
-		*files = malloc(n2*(MAX_MSG_LENGTH+1)*sizeof(char));
-		strncpy(*files, list+n1*(MAX_MSG_LENGTH+1), n2*(MAX_MSG_LENGTH+1));
-		free(list);
+		ret = getMsgList(user->msgs, msgs);
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		return OP_OK;
+		return ret;
 	}
 	//user non registrato
 	table->errori++;

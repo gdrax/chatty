@@ -216,7 +216,7 @@ test1:
 	make cleanall
 	\mkdir -p $(DIR_PATH)
 	make all
-	./chatty -f DATA/chatty.conf1&
+	valgrind --leak-check=full -v -q ./chatty -f DATA/chatty.conf1&
 	./client -l $(UNIX_PATH) -c pippo
 	./client -l $(UNIX_PATH) -c pluto
 	./client -l $(UNIX_PATH) -c minni
