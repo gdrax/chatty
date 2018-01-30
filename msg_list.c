@@ -26,9 +26,9 @@ msg_list_t *createMsgList(int history) {
 
 int addMsg(msg_list_t *list, char *text, char *sender, int type, int consegnato) {
 	if (list == NULL || text == NULL || sender == NULL || (type!= 0 && type!=1))
-		return -1;
+		return OP_FAIL;
 	if (strlen(text) > MAX_MSG_LENGTH)
-		return 2;
+		return OP_MSG_TOOLONG;
 	//creo messaggio
 	msg_t *tmp = malloc(sizeof(msg_t));
 	memset(tmp->sender, 0, MAX_NAME_LENGTH+1);
@@ -75,7 +75,7 @@ int addMsg(msg_list_t *list, char *text, char *sender, int type, int consegnato)
 			}
 		}
 	}
-	return 0;
+	return OP_OK;
 }
 
 void deleteMsgList(msg_list_t *list) {

@@ -430,18 +430,17 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 					if (user->online != -1) {
 						table->m_consegnati++;
 						insert_ele(fds, user->online);
-						if ((ret = addMsg(user->msgs, text, sender, 1, 1) != 0)) {
-							table->errori++;
-							UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-							return OP_FAIL;
+						ret = addMsg(user->msgs, text, sender, 1, 1);
+						if (ret != OP_OK) {
+							break;
 						}
 					}
 					else {
 						table->m_in_attesa++;
-						if ((ret = addMsg(user->msgs, text, sender, 1, 0) != 0)) {
+						ret = addMsg(user->msgs, text, sender, 1, 0);
+						if (ret != OP_OK) {
 							table->errori++;
-							UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-							return OP_FAIL;
+							break;
 						}
 					}
 				}
@@ -452,7 +451,7 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 		}
 		free(username);
 		UNLOCKALL(table->locks, table->u_locks+table->g_locks);
-		return OP_OK;
+		return ret;
 	}
 	//invio messaggio a utente singolo
 	else {
@@ -468,29 +467,25 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
 			return OP_NICK_UNKNOWN;
 		}
-		else {//fprintf(stdout, "devo mandare a %s con fd %d, io sono %s con df %d\n", ureceiver->username, ureceiver->online, usender->username, usender->online);
-				//fflush(stdout);
+		else {
 			int ret;
 			if (ureceiver->online != -1) {
 				table->m_consegnati++;
 				insert_ele(fds, ureceiver->online);
-				//fprintf(stdout, "fd %d\n", ureceiver->online);
-				if ((ret = addMsg(ureceiver->msgs, text, sender, 1, 1)) != 0) {
+				ret = addMsg(ureceiver->msgs, text, sender, 1, 1);
+				if (ret != OP_OK) {
 					table->errori++;
-					UNLOCKINORDER(sender, receiver, table->u_locks, table->locks)
-					return OP_FAIL;
 				}
 			}
 			else {
 				table->m_in_attesa++;
-				if ((ret = addMsg(ureceiver->msgs, text, sender, 1, 0)) != 0) {
+				ret = addMsg(ureceiver->msgs, text, sender, 1, 0);
+				if (ret != OP_OK) {
 					table->errori++;
-					UNLOCKINORDER(sender, receiver, table->u_locks, table->locks)
-					return OP_FAIL;
 				}
 			}
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return OP_OK;
+			return ret;
 		}
 	}
 }
@@ -522,22 +517,22 @@ int send_text_all(users_table_t *table, char *sender, char *text, queue_t *fds) 
 			if (user->online != -1) {
 				table->m_consegnati++;
 				insert_ele(fds, user->online);
-				if ((ret == addMsg(user->msgs, text, sender, 1, 1)) != 0) {
+				ret = addMsg(user->msgs, text, sender, 1, 1);
+				if (ret != OP_OK) {
 					table->errori++;
-					UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-					return OP_FAIL;
+					break;
 				}
 			}
 			else {
 				table->m_in_attesa++;
-				if ((ret == addMsg(user->msgs, text, sender, 1, 1)) != 0) {
+				ret = addMsg(user->msgs, text, sender, 1, 1);
+				if (ret != OP_OK) {
 					table->errori++;
-					UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-					return OP_FAIL;
+					break;
 				}
 			}
 			UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-			return OP_OK;
+			return ret;
 		}
 	}
 	UNLOCKALL(table->locks, table->u_locks+table->g_locks)
@@ -600,13 +595,11 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 						insert_ele(fds, user->online);
 					}
 					//aggiungo comunque il messaggio nella history
-					if ((ret = addMsg(user->msgs, name, sender, 0, 0) != 0)) {
+					ret = addMsg(user->msgs, name, sender, 0, 0);
+					if (ret != OP_OK) {
 						table->errori++;
-						UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-						return OP_FAIL;
+						break;
 					}
-					UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-					return OP_OK;
 				}
 				//se un utente non è più registrato lo elimino dal gruppo
 				else
@@ -616,7 +609,7 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 		free(filepath);
 		free(username);
 		UNLOCKALL(table->locks, table->u_locks+table->g_locks);
-		return OP_OK;
+		return ret;
 	}
 	else {
 		UNLOCKGROUP(receiver, table->u_locks, table->g_locks, table->locks)
@@ -645,12 +638,12 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 			if (ureceiver->online != -1) {
 				insert_ele(fds, ureceiver->online);
 			}
-			addMsg(ureceiver->msgs, name, sender, 0, 0);
+			ret = addMsg(ureceiver->msgs, name, sender, 0, 0);
 			table->f_in_attesa++;
 			close(fd);
 			free(filepath);
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return OP_OK;
+			return ret;
 		}
 	}
 }
@@ -746,7 +739,7 @@ char *users_list(users_table_t *table, int *n) {
 	}
 	int i, count=0;
 	icl_entry_t *tmp;
-	char *key, *list = malloc(table->users->nentries*(MAX_NAME_LENGTH+1)*sizeof(char));
+	char *key, *list = malloc((table->users->nentries*(MAX_NAME_LENGTH+1))*sizeof(char));
 	memset(list, 0, table->users->nentries*(MAX_NAME_LENGTH+1));
 	chat_user_t *user;
 	icl_hash_foreach(table->users, i, tmp, key, user) {

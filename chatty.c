@@ -66,10 +66,9 @@ static void usage(const char *progname) {
     fprintf(stderr, "  %s -f conffile\n", progname);
 }
 
-queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, message_t *ack, message_t *reply, int *ackData, msg_list_t *list) {
+int make_reply (message_t *request, message_data_t *filedata, int fd, message_t *ack, message_t *reply, queue_t *fds, msg_list_t *list) {
 	int ret = OP_FAIL;
-	queue_t *fds = create_queue();
-	*ackData = 0;
+	int ackData = 0;
 	switch(request->hdr.op) {
 		case REGISTER_OP: {
 			char *buf;
@@ -79,9 +78,8 @@ queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, messa
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				setData(&(ack->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
-				*ackData = 1;
+				ackData = 1;
 			}
-			free(buf);
 		} break;
 
 		case CONNECT_OP: {
@@ -92,9 +90,8 @@ queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, messa
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				setData(&(ack->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
-				*ackData = 1;
+				ackData = 1;
 			}
-			free(buf);
 		} break;
 
 		case POSTTXT_OP: {
@@ -132,19 +129,20 @@ queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, messa
 			if (ret == 0) {
 				setData(&(ack->data), "", file, filelen);
 				insert_ele(fds, fd);
-				*ackData = 1;
+				ackData = 1;
 			}
-			free(file);
 		} break;
 
 		case GETPREVMSGS_OP: {
-			size_t n;
+			int n;
 			ret = get_history(users, request->hdr.sender, list);
 			n = list->msgs + list->files;
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
+				fprintf(stdout, "AM I HERE?\n");
 				setData(&(ack->data), "", (char *)&n, sizeof(n));
-				*ackData = 1;
+				fprintf(stdout, "AM I HERE?\n");
+				ackData = 1;
 			}
 		} break;
 
@@ -154,8 +152,7 @@ queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, messa
 			buf = users_list(users, &n_users);
 			setHeader(&(ack->hdr), OP_OK, "CHATTY");
 			setData(&(ack->data), "", buf, n_users*(MAX_NAME_LENGTH+1));
-			*ackData = 1;
-			free(buf);
+			ackData = 1;
 			} break;
 
 		case UNREGISTER_OP: {
@@ -187,7 +184,7 @@ queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, messa
 			PRINT("SERVER: Rischiesta sconosciuta")
 			} break;
 	}
-	return fds;
+	return ackData;
 }
 
 void *worker(void *name) {
@@ -235,14 +232,12 @@ void *worker(void *name) {
 		if (ret > 0) {
 			fprintf(stdout, "WORKER %d: Eseguo op %d su fd %d\n", id, request->hdr.op, fd);
 			//eseguo la riichiesta
-			fds = make_reply(request, filedata, fd, ack, reply, &ackData, list);
+			ackData = make_reply(request, filedata, fd, ack, reply, fds, list);
 			//invio ack
 			LOCK(&(fd_locks[fd%13]))
-			if (ackData == 1) {
-				if((ret = sendRequest(fd, ack)) == 0) {
-					free(ack->data.buf);
+			if (ackData) {
+				if((ret = sendRequest(fd, ack)) == 0)
 					break;
-				}
 			}
 			else {
 				if((ret = sendHeader(fd, &(ack->hdr))) == 0)
@@ -291,6 +286,7 @@ void *worker(void *name) {
 				}
 			}
 		}
+		if (ackData && !(request->hdr.op == GETPREVMSGS_OP)) free(ack->data.buf);
 		free(ack);
 		free(reply);
 		free(filedata);
@@ -301,10 +297,12 @@ void *worker(void *name) {
 			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, fd);
 			close(fd);
 			set_offline(users, request->hdr.sender);
+			free(request->data.buf);
 			free(request);
 			UNLOCK(&(fd_locks[fd%13]))
 		}
 		else {
+			free(request->data.buf);
 			free(request);
 			LOCK(&queue_lock)
 			insert_ele(pending_requests, fd);

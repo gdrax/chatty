@@ -55,9 +55,9 @@ type - tipo di messaggio
 consegnato - stato del messaggio
 
 retval:
-2: messaggio troppo lungo
--1: errore
-0: successo
+OP_MSG_TOOLONG - messaggio troppo lungo
+OP_FAIL - errore
+OP_OK - successo
 */
 int addMsg(msg_list_t *list, char *text, char *sender, int type, int consegnato);
 

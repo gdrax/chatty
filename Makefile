@@ -226,7 +226,7 @@ test1:
 	./client -l $(UNIX_PATH) -k pluto -p
 	./client -l $(UNIX_PATH) -k minni -p
 #	killall -QUIT -w chatty
-	@echo "********** Test1 superato!"
+#	@echo "********** Test1 superato!"
 
 # test scambio file 
 test2:

@@ -96,9 +96,9 @@ username - nome dell'utente
 fd - file descriptor su cui è connesso il client
 
 retval:
-0 - successo
-1 - utente già presente
--1 - errore
+OP_OK - successo
+OP_NICK_ALREADY - utente già presente
+OP_FAIL - errore
 */
 int add_user(users_table_t *table, char *username, int fd);
 
@@ -110,8 +110,8 @@ table - tabella inizializzata
 username - nome dell'utente
 
 retval:
-0 - successo
--1 - errore
+OP_OK - successo
+OP_FAIL - errore
 */
 int delete_user(users_table_t *table, char *username);
 
@@ -124,9 +124,9 @@ username - nome del creatore del gruppo
 groupname - nome del gruppo da creare
 
 retval:
-0 - successo
-1 - gruppo o username già presente
--1 - errore
+OP_OK - successo
+OP_NICK_ALREADY - gruppo o username già presente
+OP_FAIL - errore
 */
 int add_group(users_table_t *table, char *owner, char *groupname);
 
@@ -138,8 +138,8 @@ table - tabella inizializzata
 groupname - nome del gruppo da rimuovere
 
 retval:
-0 - successo
--1 - errore
+OP_OK - successo
+OP_FAIL - errore
 */
 int remove_group(users_table_t *table, char *groupname);
 
@@ -152,9 +152,9 @@ username - nome dell'utente
 groupname - nome del gruppo
 
 retval:
-0 - successo
-1 - gruppo o username già presente
--1 - errore
+OP_OK - successo
+OP_NICK_UNKNOWN - gruppo o username non registrati
+OP_FAIL - errore
 */
 int join_group(users_table_t *table, char *username, char *groupname);
 
@@ -167,9 +167,8 @@ username - nome dell'utente
 groupname - nome del gruppo
 
 retval:
-0 - successo
-1 - user o gruppo non registrati, o user già iscritto al gruppo
--1 - errore
+OP_OK - successo
+OP_FAIL - errore
 */
 int leave_group(users_table_t *table, char *username, char *groupname);
 
@@ -182,8 +181,8 @@ username - nome dell'utente
 fd - file descriptor su cui si è connesso il client
 
 retval:
-0 - successo
--1 - errore
+OP_OK - successo
+OP_FAIL - errore
 */
 int set_online(users_table_t *table, char *username, int fd);
 
@@ -195,8 +194,8 @@ table - tabella inizializzata
 username - nome dell'utente
 
 retval:
-0 - successo
--1 - errore
+OP_OK - successo
+OP_FAIL - errore
 */
 int set_offline(users_table_t *table, char *username);
 
@@ -211,10 +210,10 @@ text - contenuto del messaggio
 fds - coda di file descriptor a cui inviare il messaggio (uno solo se receiver è un utente, più di uno se è un gruppo)
 
 retval:
-0 - messaggio inviato correttamente
-1 - sender o receiver non registrati
--1 - errore
-2 - messaggio troppo lungo
+OP_OK - messaggio inviato correttamente
+OP_NICK_UNKNOWN - sender o receiver non registrati
+OP_FAIL - errore
+OP_MSG_TOOLONG - messaggio troppo lungo
 */
 int send_text(users_table_t *table, char *sender, char *receiver, char *text, queue_t *fds);
 
@@ -228,10 +227,10 @@ text - contenuto del messaggio
 fds - coda di decsrittori a cui inviare il messaggio
 
 retval:
-0 - successo
-1 - sender non registrato
--1 - errore
-2 - messaggio troppo lungo
+OP_OK - messaggio inviato correttamente
+OP_NICK_UNKNOWN - sender non registrato
+OP_FAIL - errore
+OP_MSG_TOOLONG - messaggio troppo lungo
 */
 int send_text_all(users_table_t *table, char *sender, char *text, queue_t *fds);
 
@@ -249,10 +248,10 @@ dirpath - directory nella quale memorizzare il file
 max_size - lunghezza massima di file accettato dal server
 
 retval:
-0: successo
-1 - sender o receiver non registrati
-2 - file troppo lungo
--1 - errore
+OP_OK - messaggio inviato correttamente
+OP_NICK_UNKNOWN - sender o receiver non registrati
+OP_FAIL - errore
+OP_MSG_TOOLONG - file troppo lungo
 */
 int send_file(users_table_t *table, char *sender, char *receiver, char *name, char *data, int writelen, queue_t *fds, char *dirpath, int max_size);
 
@@ -268,14 +267,14 @@ filelen - puntatore dove verrà restituita lal lunghezza del file
 dirpath - directory dove il server ha memorizzato il file
 
 retval:
-0: successo
-1 - username non registrato
--1: errore
+OP_OK - successo
+OP_NICK_UNKNOWN - username non registrato
+OP_FAIL - errore
 */
 int get_file(users_table_t *table, char *username, char *name, char *datadest, int *filelen, char *dirpath);
 
 /*
-Restituisce due stringhe contenenti le liste dei messaggi testuali e dei nomi dei file  da spedire
+Restituisce una lista contenente i messaggi e i nomi di file non ancora consegnati a un certo utente
 
 param:
 table - tabella inizializzata
@@ -283,9 +282,9 @@ username - nome dell'utente
 msgs - lista dove verranno restituiti i messaggi da consengare
 
 retval:
-0: successo
--1: errore
-1: username non registrato
+OP_OK - successo
+OP_FAIL - errore
+OP_NICK_UNKNOWN - username non registrato
 */
 int get_history(users_table_t *table, char *username, msg_list_t *msgs);
 
