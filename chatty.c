@@ -198,16 +198,14 @@ void *worker(void *name) {
 				UNLOCK(&quit_lock)
 				UNLOCK(&queue_lock)
 				fprintf(stdout, "WOKER %d: Ricevuto segnale di terminazione, chiudo\n", id);
-				fflush(stdout);
 				return NULL;
 			}
 			else {
 				UNLOCK(&quit_lock)
-				fprintf(stdout, "WORKER %d: Mi sospendo su newRequest\n", id);
-				fflush(stdout);
-				CHECK((pthread_cond_wait(&newRequest, &queue_lock) != 0), "Pthread wait", NULL, 1)
 			}
-		LOCK(&quit_lock)
+			fprintf(stdout, "WORKER %d: Mi sospendo su newRequest\n", id);
+			CHECK((pthread_cond_wait(&newRequest, &queue_lock) != 0), "Pthread wait", NULL, 1)
+			LOCK(&quit_lock)
 		}
 		//prendo un file desciptor dalla coda
 		UNLOCK(&quit_lock)
@@ -313,7 +311,6 @@ void *worker(void *name) {
 		if (quit) {
 			UNLOCK(&quit_lock)
 			fprintf(stdout, "WOKER %d: Ricevuto segnale di terminazione, chiudo\n", id);
-			fflush(stdout);
 			return NULL;
 		}
 		UNLOCK(&quit_lock)
@@ -365,10 +362,10 @@ void *signal_handler(void *data) {
 
 		if (segnale == SIGTERM || segnale == SIGQUIT || segnale == SIGINT) {
 			PRINT("SERVER: Ricevuto segnale di terminazione, chiudo")
-			fflush(stdout);
 			LOCK(&quit_lock)
 			quit = 1;
 			UNLOCK(&quit_lock)
+			pthread_cond_broadcast(&newRequest);
 			pthread_cond_broadcast(&newRequest);
 			break;
 		}
@@ -472,17 +469,20 @@ int main(int argc, char *argv[]) {
 	//creo coda delle connessioni
 	pending_requests = create_queue();
 
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	//lancio il thread dispatcher
+	pthread_t th_dispatcher;
+	CHECK((pthread_create(&th_dispatcher, &attr, dispatcher, &fd_sk) != 0), "Pthread create", 0, 1)
+
 	// lancio i thread worker
 	pthread_t *workers;
 	TRY(workers, malloc(conf_data->th_in_pool*sizeof(pthread_t)), NULL, "main chatty malloc", 0, 1)
 	for (int i=0, k=0; i<conf_data->th_in_pool; i++, k++) {
-		CHECK((pthread_create(&workers[i], NULL, worker, &k) != 0), "Pthread create", 0, 1)
+		CHECK((pthread_create(&workers[i], &attr, worker, &k) != 0), "Pthread create", 0, 1)
 	}
 	PRINT("SERVER: Thread worker avviati")
-
-	//lancio il thread dispatcher
-	pthread_t th_dispatcher;
-	CHECK((pthread_create(&th_dispatcher, NULL, dispatcher, &fd_sk) != 0), "Pthread create", 0, 1)
 
 	//lancio thread gestore dei segnali
 	pthread_t th_signal_handler;
@@ -490,12 +490,13 @@ int main(int argc, char *argv[]) {
 
 /*----------------TERMINAZIONE DEI THREAD----------------*/
 	pthread_join(th_signal_handler, NULL);
-	pthread_cancel(th_dispatcher);
+
 	for (int i=0; i>conf_data->th_in_pool; i++) {
 		pthread_detach(workers[i]);
 		pthread_join(workers[i], NULL);
 		PRINT("SERVER: Thread worker terminato")
 	}
+	pthread_cancel(th_dispatcher);
 	fprintf(stdout, "SERVER: Thread workers temrinati\n");
 	free(workers);
 
@@ -503,6 +504,7 @@ int main(int argc, char *argv[]) {
 	destroy_table(users);
 	delete_queue(pending_requests);
 	free(fd_locks);
+	free_config(conf_data);
 	fflush(stdout);
 	return 0;
 }

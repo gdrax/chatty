@@ -128,3 +128,10 @@ int get_config(char *config_path, info_server_t *infos) {
 
 	return 0;
 }
+
+void free_config(info_server_t *infos) {
+	free(infos->unix_path);
+	free(infos->files_path);
+	free(infos->stat_path);
+	free(infos);
+}
