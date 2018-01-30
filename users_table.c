@@ -747,15 +747,14 @@ char *users_list(users_table_t *table, int *n) {
 	int i, count=0;
 	icl_entry_t *tmp;
 	char *key, *list = malloc(table->users->nentries*(MAX_NAME_LENGTH+1)*sizeof(char));
-	memset(list, 0, table->users->nentries*(MAX_NAME_LENGTH+1)*sizeof(char));
+	memset(list, 0, table->users->nentries*(MAX_NAME_LENGTH+1));
 	chat_user_t *user;
 	icl_hash_foreach(table->users, i, tmp, key, user) {
 		if (user != NULL && user->username != NULL) {
-			strncat(list + count*(MAX_NAME_LENGTH+1), user->username, MAX_NAME_LENGTH+1);
+			strncat(list + count*(MAX_NAME_LENGTH+1), user->username, strlen(user->username));
 			count++;
 		}
 	}
-
 	*n = table->users->nentries;
 	UNLOCKALL(table->locks, table->u_locks+table->g_locks)
 	return list;

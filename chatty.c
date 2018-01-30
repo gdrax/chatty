@@ -66,7 +66,7 @@ static void usage(const char *progname) {
     fprintf(stderr, "  %s -f conffile\n", progname);
 }
 
-queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, message_t *ack, message_t *reply, int *ackData, message_t *msgs) {
+queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, message_t *ack, message_t *reply, int *ackData, msg_list_t *list) {
 	int ret = OP_FAIL;
 	queue_t *fds = create_queue();
 	*ackData = 0;
@@ -139,30 +139,13 @@ queue_t *make_reply (message_t *request, message_data_t *filedata, int fd, messa
 
 		case GETPREVMSGS_OP: {
 			size_t n;
-			int i=0;
-			msg_list_t *list = createMsgList(conf_data->max_history);
 			ret = get_history(users, request->hdr.sender, list);
 			n = list->msgs + list->files;
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				setData(&(ack->data), "", (char *)&n, sizeof(n));
 				*ackData = 1;
-				insert_ele(fds, n);
-				msg_t *tmp = list->head;
-				while(tmp != NULL) {
-					if (tmp->type == 1) {
-						setHeader(&(msgs[i].hdr), TXT_MESSAGE, tmp->sender);
-						setData(&(msgs[i].data), request->hdr.sender, tmp->text, MAX_MSG_LENGTH+1);
-					}
-					else {
-						setHeader(&(msgs[i].hdr), FILE_MESSAGE, tmp->sender);
-						setData(&(msgs[i].data), request->hdr.sender, tmp->text, MAX_MSG_LENGTH+1);
-					}
-					tmp = tmp->next;
-					i++;
-				}
 			}
-			deleteMsgList(list);
 		} break;
 
 		case USRLIST_OP: {
@@ -233,10 +216,11 @@ void *worker(void *name) {
 		UNLOCK(&quit_lock)
 		int fd = take_ele(pending_requests);
 		UNLOCK(&queue_lock)
-		message_t *request, *ack, *reply, msgs[conf_data->max_history];
+		message_t *request, *ack, *reply;
 		message_data_t *filedata;
 		int ret = 0, ackData = 0;
 		queue_t *fds = create_queue();
+		msg_list_t *list = createMsgList(conf_data->max_history);
 		TRY(request, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
 		TRY(ack, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
 		TRY(reply, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
@@ -251,12 +235,14 @@ void *worker(void *name) {
 		if (ret > 0) {
 			fprintf(stdout, "WORKER %d: Eseguo op %d su fd %d\n", id, request->hdr.op, fd);
 			//eseguo la riichiesta
-			fds = make_reply(request, filedata, fd, ack, reply, &ackData, msgs);
+			fds = make_reply(request, filedata, fd, ack, reply, &ackData, list);
 			//invio ack
 			LOCK(&(fd_locks[fd%13]))
 			if (ackData == 1) {
-				if((ret = sendRequest(fd, ack)) == 0)
+				if((ret = sendRequest(fd, ack)) == 0) {
+					free(ack->data.buf);
 					break;
+				}
 			}
 			else {
 				if((ret = sendHeader(fd, &(ack->hdr))) == 0)
@@ -283,38 +269,48 @@ void *worker(void *name) {
 						}
 					}
 					else if(request->hdr.op == GETPREVMSGS_OP) {
-						for (int i=0; i<fds->len; i++) {
+						msg_t *tmp = list->head;
+						while (tmp != NULL) {
 							LOCK(&(fd_locks[fd%13]))
-							fprintf(stdout, "string %s\n", msgs[i].data.buf);
-							if ((ret = sendRequest(fd, &(msgs[i]))) == 0) {
+							if (tmp->type == 1)
+								setHeader(&(reply->hdr), TXT_MESSAGE, tmp->sender);
+							else
+								setHeader(&(reply->hdr), FILE_MESSAGE, tmp->sender);
+							setData(&(reply->data), request->hdr.sender, tmp->text, MAX_MSG_LENGTH+1);
+							if ((ret = sendRequest(fd, reply)) == 0) {
 								UNLOCK(&(fd_locks[fd%13]))
 								break;
 							}
-							else
+							else {
 								fprintf(stdout, "WOKER %d: Invio messaggio su fd %d\n", id, fd);
+							}
 							UNLOCK(&(fd_locks[fd%13]))
+							tmp = tmp->next;
 						}
 					}
 				}
 			}
 		}
+		free(ack);
+		free(reply);
+		free(filedata);
+		delete_queue(fds);
+		deleteMsgList(list);
 		if (ret == 0) {
 			LOCK(&(fd_locks[fd%13]))
 			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, fd);
 			close(fd);
 			set_offline(users, request->hdr.sender);
+			free(request);
 			UNLOCK(&(fd_locks[fd%13]))
 		}
 		else {
+			free(request);
 			LOCK(&queue_lock)
 			insert_ele(pending_requests, fd);
 			pthread_cond_signal(&newRequest);
 			UNLOCK(&queue_lock)
 		}
-		free(request);
-		free(reply);
-		free(filedata);
-		delete_queue(fds);
 		LOCK(&quit_lock)
 		if (quit) {
 			UNLOCK(&quit_lock)
