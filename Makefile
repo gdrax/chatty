@@ -174,21 +174,18 @@ test6mini:
 	make cleanall
 	\mkdir -p $(DIR_PATH)
 	make all
-	valgrind --leak-check=full -v -q ./chatty -f DATA/chatty.conf1&
+	./chatty -f DATA/chatty.conf1&
 	./client -l $(UNIX_PATH) -c pippo &
-	./client -l $(UNIX_PATH) -c pluto &
-	./client -l $(UNIX_PATH) -c minni &
 	./client -l $(UNIX_PATH) -c topolino &
-	./client -l $(UNIX_PATH) -c paperino &
-	./client -l $(UNIX_PATH) -c qui &
-	./client -l $(UNIX_PATH) -k pippo -g gruppo1
-	./client -l $(UNIX_PATH) -k pluto -g gruppo2
-	./client -l $(UNIX_PATH) -k minni -a gruppo1
-	./client -l $(UNIX_PATH) -k topolino -a gruppo1
-	./client -l $(UNIX_PATH) -k paperino -a gruppo2
-	./client -l $(UNIX_PATH) -k minni -a gruppo2
-	./client -l $(UNIX_PATH)  -k pippo -S "Ciao a tutti da pippo":gruppo1 -R 1
-#	./client -l $(UNIX_PATH)  -k minni -S "Ciao a tutti da minni":gruppo1 -R 1 -S "sargio":topolino
+	./client -l $(UNIX_PATH) -c minni &
+	wait
+# minni deve ricevere 8 messaggi prima di terminare
+	./client -l $(UNIX_PATH) -k minni -R 1 &
+	pid=$!
+# aspetto un po' per essere sicuro che il client sia partito
+	sleep 1
+# primo messaggio
+	./client -l $(UNIX_PATH) -k topolino -S "ciao da topolino":minni
 
 test20:
 	make cleanall

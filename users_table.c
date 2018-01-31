@@ -357,6 +357,8 @@ int set_online(users_table_t *table, char *username, int fd) {
 	if (CHECKNAME(table->users, username, user)) {
 		user->online = fd;
 		table->users_online++;
+		fprintf(stdout, "Setto online %s su %d\n", user->username, user->online);
+		fflush(stdout);
 		UNLOCKUSER(username, table->u_locks, table->locks)
 		return OP_OK;
 	}
@@ -374,6 +376,8 @@ int set_offline(users_table_t *table, char *username) {
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
 	if (CHECKNAME(table->users, username, user)) {
+		fprintf(stdout, "Setto offline %s su fd %d\n", user->username, user->online);
+		fflush(stdout);
 		user->online = -1;
 		table->users_online--;
 		UNLOCKUSER(username, table->u_locks, table->locks)

@@ -182,6 +182,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 
 		default: {
 			PRINT("SERVER: Rischiesta sconosciuta")
+			ackData = -1;
 			} break;
 	}
 	return ackData;
@@ -211,9 +212,11 @@ void *worker(void *name) {
 		UNLOCK(&quit_lock)
 		int fd = take_ele(pending_requests);
 		UNLOCK(&queue_lock)
+		fprintf(stdout, "WOKER %d: Trovato nuovo fd %d\n", id, fd);
+		fflush(stdout);
 		message_t *request, *ack, *reply;
 		message_data_t *filedata;
-		int ret = 0, ackData = 0;
+		int ret = -1, ackData = 0;
 		queue_t *fds = create_queue();
 		msg_list_t *list = createMsgList(conf_data->max_history);
 		TRY(request, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
@@ -231,6 +234,8 @@ void *worker(void *name) {
 			fprintf(stdout, "WORKER %d: Eseguo op %d su fd %d\n", id, request->hdr.op, fd);
 			//eseguo la riichiesta
 			ackData = make_reply(request, filedata, fd, ack, reply, fds, list);
+			if (ackData == -1)
+				break;
 			//invio ack
 			LOCK(&(fd_locks[fd%13]))
 			if (ackData) {
@@ -250,14 +255,18 @@ void *worker(void *name) {
 						int rec_fd, ret2;
 						for (int i=0; i<fds->len; i++) {
 							rec_fd = take_ele(fds);
+							fprintf(stdout, "su quale fd %d, %s, %d\n", rec_fd, reply->data.buf, reply->hdr.op);
+							fflush(stdout);
 							LOCK(&(fd_locks[rec_fd%13]))
 							if ((ret2 = sendRequest(rec_fd, reply)) == 0) {
-								fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, rec_fd);
-								close(rec_fd);
 								set_offline(users, request->hdr.sender);
+								close(rec_fd);
+								fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, rec_fd);
 							}
-							else
+							else {
 								fprintf(stdout, "WOKER %d: Invio messaggio su fd %d\n", id, rec_fd);
+								fflush(stdout);
+							}
 							UNLOCK(&(fd_locks[rec_fd%13]))
 						}
 					}
@@ -292,9 +301,9 @@ void *worker(void *name) {
 		deleteMsgList(list);
 		if (ret == 0) {
 			LOCK(&(fd_locks[fd%13]))
-			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, fd);
-			close(fd);
 			set_offline(users, request->hdr.sender);
+			close(fd);
+			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, fd);
 			free(request->data.buf);
 			free(request);
 			UNLOCK(&(fd_locks[fd%13]))
@@ -303,6 +312,8 @@ void *worker(void *name) {
 			free(request->data.buf);
 			free(request);
 			LOCK(&queue_lock)
+			fprintf(stdout, "WORKER %d: Rimetto fd %d in coda\n", id, fd);
+			fflush(stdout);
 			insert_ele(pending_requests, fd);
 			pthread_cond_signal(&newRequest);
 			UNLOCK(&queue_lock)
@@ -492,7 +503,6 @@ int main(int argc, char *argv[]) {
 	pthread_join(th_signal_handler, NULL);
 
 	for (int i=0; i>conf_data->th_in_pool; i++) {
-		pthread_detach(workers[i]);
 		pthread_join(workers[i], NULL);
 		PRINT("SERVER: Thread worker terminato")
 	}

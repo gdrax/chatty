@@ -234,7 +234,7 @@ static int execute_requestreply(int connfd, operation_t *o) {
 	}	
 	int nusers = msg.data.hdr.len / (MAX_NAME_LENGTH+1);
 	assert(nusers > 0);
-	printf("Lista utenti online:\n");
+	printf("Lista utenti online di %s:\n", sname);
 	for(int i=0,p=0;i<nusers; ++i, p+=(MAX_NAME_LENGTH+1)) {
 	    printf(" %s\n", &msg.data.buf[p]);
 	}
@@ -337,7 +337,11 @@ static int execute_receive(int connfd, operation_t *o) {
 	    printf("[Il file '%s' e' stato scaricato correttamente]\n",filename);
 	} break;
 	default: {
-	    fprintf(stderr, "ERRORE: ricevuto messaggio non valido\n");
+	    fprintf(stderr, "ERRORE: ricevuto messaggio non valido %d\n", msg.hdr.op);
+	fprintf(stdout, "-------------->%d------->\n", msg.hdr.op);
+		for (int i=0; i<MAX_NAME_LENGTH*10; i++) {
+			fprintf(stdout, "-------------%c--------\n", msg.hdr.sender[i]);
+		}
 	    return -1;
 	}
 	}	    
