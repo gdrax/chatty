@@ -8,7 +8,7 @@
 
 int main() {
 /*			CREAZIONE TABELLA			*/
-	users_table_t *table = create_table(8, 2, 32, 10);
+	users_table_t *table = create_table(8, 2, 2, 32, 10, 100, 100);
 	char *s1 = "pippo", *s2 = "pluto", *s3 = "biagio", *s4 = "DD", *s5 = "bens";
 	
 	char *g1 = "gruppo 1", *g2 = "gruppo 2", *g3 = "gruppo 3", *g4 = "gruppo 4", *g5 = "gruppo 5";
@@ -17,7 +17,7 @@ int main() {
 
 	int ret;
 
-	queue_t *queue = create_queue();
+	queue_t *queue = create_queue(NULL);
 /*			INSERIMENTO USER			*/
 	ret = add_user(table, s1, 0);
 	fprintf(stdout, "Aggiunta user: %d\n", ret);
@@ -137,10 +137,10 @@ int main() {
 	ret = set_online(table, s1, 3);
 	fprintf(stdout, "Set online user s1: %d\n", ret);
 
-	ret = set_offline(table, s1);
+	ret = set_offline(table, s1, 0);
 	fprintf(stdout, "Set offline user s1: %d\n", ret);
 
-	ret = set_offline(table, "mhanz");
+	ret = set_offline(table, "mhanz", 0);
 	fprintf(stdout, "Set offline user non presente: %d\n", ret);
 
 
@@ -169,20 +169,12 @@ int main() {
 
 	icl_hash_foreach(table->users, i, tmp, key, user) {
 		fprintf(stdout, "\n	%s	\n", user->username);
-		printMsgList(user->msgs);
 	}
 
 /*			DISTRUZIONE TABELLA			*/
 	ret = destroy_table(table);
 	fprintf(stdout, "Distruzione della tabella %d\n", ret);
 
-	
-/*	queue_t *queue = create_queue();*/
-
-/*	insert_ele(queue, "sargio");*/
-/*	insert_ele(queue, "edo");*/
-/*	char *s = take_ele(queue);*/
-/*	s = take_ele(queue);*/
 	delete_queue(queue);
 	return 0;
 }

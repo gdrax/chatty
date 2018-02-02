@@ -19,7 +19,7 @@ UnixPath         = /tmp/chatty_socket
 MaxConnections	 = 32
 
 # numero di thread nel pool 
-ThreadsInPool    = 20
+ThreadsInPool    = 10
 
 # dimensione massima di un messaggio testuale (numero di caratteri)
 MaxMsgSize       = 512
@@ -35,6 +35,18 @@ DirName          = /tmp/chatty
 
 # file nel quale verranno scritte le statistiche del server
 StatFileName     = /tmp/chatty_stats.txt
+
+# numero di mutex per gli utenti
+UserLocks     = 16
+
+# numero di mutex per i gruppi
+GroupLocks     = 16
+
+# numero di mutex per i file descriptor
+FdLocks     = 16
+
+#numero di buckets per le tabelle hash
+Buckets     = 32
 # --------------------------------------------------------------
 
 # aggiungere altre opzioni necessarie da qui in poi

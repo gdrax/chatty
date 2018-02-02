@@ -9,12 +9,12 @@
 ##########################################################
 # IMPORTANTE: completare la lista dei file da consegnare
 # 
-FILE_DA_CONSEGNARE=Makefile chatty.c message.h ops.h stats.h config.h \
+FILE_DA_CONSEGNARE=Makefile chatty.c message.h ops.h stats.h config.h chat_parser.h chat_parser.c connections.c connections.h icl_hash.c icl_hash.h listener.c msg_list.c msg_list.h queue.c queue.h Relazione.pdf string_list.c string_list.h users_table.c users_table.h utility.h\
 		   DATA/chatty.conf1 DATA/chatty.conf2 connections.h 
 # inserire il nome del tarball: es. NinoBixio
-TARNAME=NomeCognome
+TARNAME=GioeleBertoncini
 # inserice il corso di appartenenza: CorsoA oppure CorsoB
-CORSO=CorsoX
+CORSO=CorsoB
 #
 ###########################################################
 
@@ -115,9 +115,6 @@ killchatty:
 	killall -9 chatty
 
 # da cancellare
-start:
-	gedit chatty.c connections.c ops.h client.c message.h utility.h users_table.c Makefile &
-
 valgrind:
 	make cleanall
 	\mkdir -p $(DIR_PATH)
@@ -132,98 +129,24 @@ valgrind:
 	./client -l $(UNIX_PATH) -k pluto -p
 	./client -l $(UNIX_PATH) -k minni -p
 #	killall -QUIT -w chatty
-	@echo "********** Test1 superato!"
-
-my_test_user:
-	make cleanall
-	\mkdir -p $(DIR_PATH)
-	make all
-#	./test_users
-	valgrind --leak-check=full -v -q ./test_users
+#	@echo "********** Test1 superato!"
 
 # test base
-test10: 
-	make cleanall
-	\mkdir -p $(DIR_PATH)
-	make all
-	./NEclient&
-	./chatty -f DATA/chatty.conf1
-	@echo "********* Test10 superato!"
-
-test00: 
-	make cleanall
-	\mkdir -p $(DIR_PATH)
-	make all
-	./chatty -f DATA/chatty.conf1&
-	./client -l $(UNIX_PATH) -c sargione4
-	./client -l $(UNIX_PATH) -c sargione5
-	./client -l $(UNIX_PATH) -k sargione4 -S "Ciao sargione5":sargione5
-	./client -l $(UNIX_PATH) -k sargione5 -S "Ciao":sargione4 -S "Ciao ":sargione4
-
-
-test0: 
-	make cleanall
-	\mkdir -p $(DIR_PATH)
-	make all
-	valgrind --leak-check=full -v -q ./chatty -f DATA/chatty.conf1&
-	./client -l $(UNIX_PATH) -c sargione
-	sleep 5
-	killall -QUIT -w chatty
-
-test6mini:
-	make cleanall
-	\mkdir -p $(DIR_PATH)
-	make all
-	./chatty -f DATA/chatty.conf1&
-	./client -l $(UNIX_PATH) -c pippo &
-	./client -l $(UNIX_PATH) -c topolino &
-	./client -l $(UNIX_PATH) -c minni &
-	wait
-# minni deve ricevere 8 messaggi prima di terminare
-	./client -l $(UNIX_PATH) -k minni -R 1 &
-	pid=$!
-# aspetto un po' per essere sicuro che il client sia partito
-	sleep 1
-# primo messaggio
-	./client -l $(UNIX_PATH) -k topolino -S "ciao da topolino":minni
-
-test20:
-	make cleanall
-	\mkdir -p $(DIR_PATH)
-	make all
-	./chatty -f DATA/chatty.conf1&
-	./testfilemini.sh $(UNIX_PATH) $(DIR_PATH)
-	killall -QUIT -w chatty
-	@echo "********** Test2 superato!"
-
-test21:
-	make cleanall
-	\mkdir -p $(DIR_PATH)
-	make all
-	valgrind --leak-check=full -v -q ./chatty -f DATA/chatty.conf1&
-	./client -l $(UNIX_PATH) -c pippo
-	./client -l $(UNIX_PATH) -c pluto
-	./client -l $(UNIX_PATH) -c minni
-	./client -l $(UNIX_PATH) -k pluto -R 2&
-	./client -l $(UNIX_PATH) -k pippo -S "Ti mando un file":pluto -s ./client:pluto
-
-
-
 test1: 
 	make cleanall
 	\mkdir -p $(DIR_PATH)
 	make all
-	valgrind --leak-check=full -v -q --show-leak-kinds=all ./chatty -f DATA/chatty.conf1&
+	./chatty -f DATA/chatty.conf1&
 	./client -l $(UNIX_PATH) -c pippo
 	./client -l $(UNIX_PATH) -c pluto
 	./client -l $(UNIX_PATH) -c minni
 	./client -l $(UNIX_PATH) -k pippo -S "Ciao pluto":pluto -S "come stai?":pluto
-	./client -l $(UNIX_PATH) -k pluto -p -S "Ciao pippo":pippo -S "bene e tu?":pippo -S "Ciao minni come stai?":minni
+	./client -l $(UNIX_PATH) -k pluto -S "Ciao pippo":pippo -S "bene e tu?":pippo -S "Ciao minni come stai?":minni
 	./client -l $(UNIX_PATH) -k pippo -p
 	./client -l $(UNIX_PATH) -k pluto -p
 	./client -l $(UNIX_PATH) -k minni -p
-#	killall -QUIT -w chatty
-#	@echo "********** Test1 superato!"
+	killall -QUIT -w chatty
+	@echo "********** Test1 superato!"
 
 # test scambio file 
 test2:

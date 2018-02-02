@@ -1,61 +1,57 @@
-/*
-	\file queue.h
-	\author Bertoncini Gioele 
-	Si dichiara che il contenuto di questo file e' in ogni sua parte opera originale dell'autore
-*/
+#ifndef QUEUE_H_
+#define QUEUE_H_
 
-#ifndef queue_h
-#define queue_h
+/** Elemento della coda.
+ *
+ */
+typedef struct Node {
+    void        * data;
+    struct Node * next;
+} Node_t;
 
-#include"config.h"
-
-typedef struct qnode {
-	int fd;
-	struct qnode *next;
-} qnode_t;
-
-typedef struct queue {
-	int len;
-	qnode_t *head;
-	qnode_t *tail;
+/** Struttura dati coda.
+ *
+ */
+typedef struct Queue {
+    Node_t        *head;
+    Node_t        *tail;
+    unsigned long  len;
+    void (*free_data)(void*);
 } queue_t;
 
-/*
-Crea una coda vuota
 
-retval: puntatore alla coda appena creata
-*/
-queue_t *create_queue();
+/** Alloca ed inizializza una coda. Deve essere chiamata da un solo 
+ *  thread (tipicamente il thread main).
+ *   \param nrow numero righe
+ *   \param numero colonne
+ *
+ *   \retval NULL se si sono verificati problemi nell'allocazione (errno settato)
+ *   \retval q puntatore alla coda allocata
+ */
+queue_t *create_queue(void (*free_data)(void*));
 
-/*
-Distrugge una coda
-
-param:
-q - puntatore alla coda da distruggere
-*/
+/** Cancella una coda allocata con initQueue. Deve essere chiamata da
+ *  da un solo thread (tipicamente il thread main).
+ *  
+ *   \param q puntatore alla coda da cancellare
+ */
 void delete_queue(queue_t *q);
 
-/*
-Inserisce elemento in coda
+/** Inserisce un dato nella coda.
+ *   \param data puntatore al dato da inserire
+ *  
+ *   \retval 0 se successo
+ *   \retval -1 se errore (errno settato opportunamente)
+ */
+int    insert_ele(queue_t *q, void *data);
 
-param:
-q - coda già inizializzata
-data - elemento da inserire in coda
-
-retval: puntatore alla coda appene creata
-*/
-int insert_ele(queue_t *q, int fd);
-
-/*
-Restituisce ed elimina l'elemento in testa alla coda
-
-param:
-q - coda da cui prelevare l'elemento
-
-retval:
-elemento in testa alla coda
-*/
-int take_ele(queue_t *q);
+/** Estrae un dato dalla coda.
+ *
+ *  \retval data puntatore al dato estratto.
+ */
+void  *take_ele(queue_t *q);
 
 
-#endif
+unsigned long length(queue_t *q);
+
+#endif /* QUEUE_H_ */

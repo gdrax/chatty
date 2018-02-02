@@ -13,6 +13,7 @@ Struttura di un elemento della lista
 */
 typedef struct s_ele {
 	char *data;
+	int fd;
 	struct s_ele *next;
 } s_ele_t;
 
@@ -22,7 +23,6 @@ Struttura della lista
 typedef struct string_list {
 	int size;
 	s_ele_t *head;
-	s_ele_t *tail;
 } string_list_t;
 
 
@@ -50,6 +50,7 @@ Aggiunge una stringa alla lista
 param:
 list - lista già inizializzata
 string - string da aggiungere
+fd - file descriptor assocoiato alla stringa
 
 retval:
 0 - stringa aggiunta
@@ -57,7 +58,7 @@ retval:
 -1 - errore
 
 */
-int addString(string_list_t *list, char *string);
+int addString(string_list_t *list, char *string, int fd);
 
 /*
 Elimina una stringa dalla lista
@@ -98,5 +99,32 @@ retval:
 0 - successo
 */
 int getByIndex(string_list_t *list, int index, char *string);
+
+/*
+Cambia il descrittore di file associato a una stringa
+
+param:
+list - lista già inizializzata
+string - stringa asociata
+fd - nuovo descrittore
+
+retval:
+-1 - errore
+0 - successo
+*/
+int update_fd(string_list_t *list, char *string, int fd);
+
+/*
+Rimuove la stringa associata ad un descrittore e la restituisce
+
+param:
+list - lista già inizializzata
+fd - descrittore da rimuovere
+
+retval:
+NULL: errore
+stringa associata al descrittore: successo
+*/
+char * disconnect_fd(string_list_t *list, int fd);
 
 #endif

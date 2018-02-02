@@ -17,7 +17,11 @@ typedef struct info_server {
 	int max_history;
 	char *files_path;
 	char *stat_path;
-	int check[8];
+	int user_locks;
+	int group_locks;
+	int fd_locks;
+	int buckets;
+	int check[12];
 } info_server_t;
 
 /*

@@ -36,6 +36,17 @@ StatFileName     = /tmp/chatty_stats.txt
 # path utilizzato per la creazione del socket AF_UNIX
 UnixPath         = /tmp/chatty_socket
 
+# numero di mutex per gli utenti
+UserLocks     = 16
+
+# numero di mutex per i gruppi
+GroupLocks     = 16
+
+# numero di mutex per i file descriptor
+FdLocks     = 16
+
+#numero di buckets per le tabelle hash
+Buckets     = 32
 # --------------------------------------------------------------
 
 # aggiungere altre opzioni necessarie da qui in poi

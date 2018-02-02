@@ -24,8 +24,22 @@ int get_config(char *config_path, info_server_t *infos) {
 	
 	TRY(fd, fopen(config_path, "r"), NULL, "Fopen", -1, 0)
 
+	//inizializzo la struct
+	infos->max_connections = 0;
+	infos->th_in_pool = 0;
+	infos->max_msg_size = 0;
+	infos->max_file_size = 0;
+	infos->max_history = 0;
+	infos->unix_path = NULL;
+	infos->files_path = NULL;
+	infos->stat_path = NULL;
+	infos->user_locks = 0;
+	infos->group_locks = 0;
+	infos->fd_locks = 0;
+	infos->buckets = 0;
+
 	//inizializzo l'array delle info
-	for (int f=0; f<8; f++) {
+	for (int f=0; f<12; f++) {
 		infos->check[i] = 0;
 	}
 
@@ -104,6 +118,26 @@ int get_config(char *config_path, info_server_t *infos) {
 			infos->check[7] = 1;
 			continue;
 		}
+		if (strcmp(nome_attr, "UserLocks") == 0) {
+			infos->user_locks = atoi(val_attr);
+			infos->check[8] = 1;
+			continue;
+		}
+		if (strcmp(nome_attr, "GroupLocks") == 0) {
+			infos->group_locks = atoi(val_attr);
+			infos->check[9] = 1;
+			continue;
+		}
+		if (strcmp(nome_attr, "FdLocks") == 0) {
+			infos->fd_locks = atoi(val_attr);
+			infos->check[10] = 1;
+			continue;
+		}
+		if (strcmp(nome_attr, "Buckets") == 0) {
+			infos->buckets = atoi(val_attr);
+			infos->check[11] = 1;
+			continue;
+		}
 
 	}
 	free(buf);
@@ -125,6 +159,11 @@ int get_config(char *config_path, info_server_t *infos) {
 		strcmp(infos->files_path, "") == 0 || 
 		strcmp(infos->stat_path, "") == 0)
 		return -1;
+	if (infos->user_locks < 1) infos->user_locks = 16;
+	if (infos->group_locks < 1) infos->group_locks = 16;
+	if (infos->fd_locks < 1) infos->fd_locks = 16;
+	if (infos->buckets < 1) infos->buckets = 32;
+
 
 	return 0;
 }

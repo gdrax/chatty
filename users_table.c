@@ -37,6 +37,14 @@
 #define UNLOCKGROUP(g, n, m, locks)			\
 		UNLOCK(&locks[(djb2(g) % m) + n])
 
+//acquisisce la lock per un descrittore
+#define LOCKFD(fd, n, m, f, locks)			\
+		LOCK(&locks[(fd % f) + n + m])
+
+//rilascia la lock per un descrittore
+#define UNLOCKFD(fd, n, m, f, locks)			\
+		UNLOCK(&locks[(fd % f) + n + m])
+
 //acquisisce le lock per due utenti in ordine, se entrambi gli utenti sono sotto la stessa ne acquisisce una sola
 #define LOCKINORDER(u1, u2, n, locks)				\
 		if ((djb2(u1)%n) < (djb2(u2)%n)) {		\
@@ -89,7 +97,7 @@ unsigned int djb2(void *str) {
 void freeUser(void *data) {
 	if (data) {
 		chat_user_t *user = (chat_user_t *)data;
-		deleteMsgList(user->msgs);
+		delete_queue(user->msgs);
 		free(user);
 	}
 }
@@ -103,9 +111,29 @@ void freeGroup(void *data) {
 	}
 }
 
+//libera un chat_message
+void freeChatMessage(void *data) {
+	if (data) {
+		chat_message_t *tmp = (chat_message_t *)data;
+		if (tmp->message) freeMessage(tmp->message);
+		free(tmp);
+	}
+}
+
+//libera un message_t
+void freeMessage(void *data) {
+	if (data) {
+		message_t *tmp = (message_t *)data;
+		if (tmp->data.buf) free(tmp->data.buf);
+		free(tmp);
+	}
+}
+
+
 char *make_path(char *filename, char *dirpath) {
 	int len = strlen(filename) + strlen(dirpath) + 2, i=0;
 	char *filepath = malloc(len*sizeof(char));
+	memset(filepath, 0, len);
 	for(i=0; i<strlen(dirpath); i++)
 		filepath[i] = dirpath[i];
 	filepath[i] = '/';
@@ -129,23 +157,42 @@ int write_file(int fd, char *buf, int left) {
 	return 0;
 }
 
+void store_msg(users_table_t *table, char *sender, char *text, int type, queue_t *q, int status) {
+	chat_message_t *new = malloc(sizeof(chat_message_t)), *tmp;
+	new->message = malloc(sizeof(message_t));
+	setHeader(&(new->message->hdr), type, sender);
+	new->message->data.buf = malloc(sizeof(char)*strlen(text));
+	setData(&(new->message->data), "", text, strlen(text));
+	new->consegnato = status;
+	insert_ele(q, new);
+	if (q->len > table->history) {
+		tmp = take_ele(q);
+		freeMessage(tmp);
+	}
+}
 
-users_table_t *create_table(int u_locks, int g_locks, int n_buckets, int history) {
+
+users_table_t *create_table(int u_locks, int g_locks, int fd_locks, int n_buckets, int history, int max_msg_size, int max_file_size) {
 	if (u_locks <= 0) u_locks = 8;
 	if (g_locks <= 0) g_locks = 8;
+	if (fd_locks <= 0) fd_locks = 8;
 	if (n_buckets <= 0) n_buckets = 16;
 
 	users_table_t *table;
 	TRY(table, malloc(sizeof(users_table_t)), NULL, "malloc", NULL, 1)
 	table->users = icl_hash_create(n_buckets, djb2, NULL);
 	table->groups = icl_hash_create(n_buckets, djb2, NULL);
-	TRY(table->locks, malloc((u_locks+g_locks)*sizeof(pthread_mutex_t)), NULL, "malloc", NULL, 1)
-	for (int i=0; i<(u_locks+g_locks); i++) {
+	TRY(table->locks, malloc((u_locks+g_locks+fd_locks)*sizeof(pthread_mutex_t)), NULL, "malloc", NULL, 1)
+	for (int i=0; i<(u_locks+g_locks+fd_locks); i++) {
 		memset(&(table->locks[i]), 0, sizeof(pthread_mutex_t));
 	}
+	table->online_users = createSList();
 	table->u_locks = u_locks;
 	table->g_locks = g_locks;
+	table->fd_locks = fd_locks;
 	table->history = history;
+	table->max_msg_size = max_msg_size;
+	table->max_file_size = max_file_size;
 	return table;
 }
 
@@ -155,6 +202,7 @@ int destroy_table(users_table_t *table) {
 		TRY(ret, icl_hash_destroy(table->users, NULL, &freeUser), -1, "icl_hash_destroy", -1, 0)
 		TRY(ret, icl_hash_destroy(table->groups, NULL, &freeGroup), -1, "icl_hash_destroy", -1, 0)
 		free(table->locks);
+		deleteSList(table->online_users);
 		free(table);
 	}
 	return 0;
@@ -179,7 +227,7 @@ int add_user(users_table_t *table, char *username, int fd) {
 	memset(new->username, 0, MAX_NAME_LENGTH+1);
 	strncpy(new->username, username, strlen(username)+1);
 	new->online = -1;
-	if ((new->msgs = createMsgList(table->history)) == NULL) {
+	if ((new->msgs = create_queue(freeChatMessage)) == NULL) {
 		table->errori++;
 		UNLOCKUSER(username, table->u_locks, table->locks);
 		return OP_FAIL;
@@ -247,7 +295,7 @@ int add_group(users_table_t *table, char *owner, char *groupname) {
 		strncpy(new->owner, owner, strlen(owner)+1);
 		//aggiungo subito il proprietario tra i membri
 		int ret;
-		if ((ret = addString(new->members, new->owner)) == -1) {
+		if ((ret = addString(new->members, new->owner, -1)) == -1) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(owner, table->u_locks, table->locks)
@@ -308,7 +356,7 @@ int join_group(users_table_t *table, char *username, char *groupname) {
 	}
 	else {
 		int ret;
-		if ((ret = addString(group->members, user->username)) != 0) {
+		if ((ret = addString(group->members, user->username, -1)) != 0) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(username, table->u_locks, table->locks)
@@ -352,41 +400,76 @@ int set_online(users_table_t *table, char *username, int fd) {
 		table->errori++;
 		return OP_FAIL;
 	}
+	int ret=0;
 	LOCKUSER(username, table->u_locks, table->locks)
+	LOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 	chat_user_t *user;
 	if (CHECKNAME(table->users, username, user)) {
 		user->online = fd;
+		//aggiungo utente alla lista degli online
+		ret = addString(table->online_users, username, fd);
+		//se la stringa è già presente aggiorno il descrittore
+		if (ret == 1) {
+			update_fd(table->online_users, username, fd);
+		}
 		table->users_online++;
-		fprintf(stdout, "Setto online %s su %d\n", user->username, user->online);
-		fflush(stdout);
+		UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 		UNLOCKUSER(username, table->u_locks, table->locks)
 		return OP_OK;
 	}
 	//user non registrato
 	table->errori++;
+	UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 	UNLOCKUSER(username, table->u_locks, table->locks)
 	return OP_NICK_UNKNOWN;
 }
 
-int set_offline(users_table_t *table, char *username) {
-	if (!table || !username) {
+int set_offline(users_table_t *table, char *username, int fd) {
+	if (!table) {
 		table->errori++;
 		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
+	LOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 	chat_user_t *user;
 	if (CHECKNAME(table->users, username, user)) {
-		fprintf(stdout, "Setto offline %s su fd %d\n", user->username, user->online);
-		fflush(stdout);
 		user->online = -1;
 		table->users_online--;
+		//rimuovo il descriptor dalla lista online
+		removeString(table->online_users, username);
+		UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 		UNLOCKUSER(username, table->u_locks, table->locks)
 		return OP_OK;
 	}
 	//user non registrato
 	table->errori++;
+	UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 	UNLOCKUSER(username, table->u_locks, table->locks)
 	return OP_NICK_UNKNOWN;
+}
+
+int set_offline_fd(users_table_t *table, int fd) {
+	if (!table) {
+		table->errori++;
+		return OP_FAIL;
+	}
+	char *username = NULL;
+	LOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
+	username = disconnect_fd(table->online_users, fd);
+	UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
+	if (username == NULL) {
+		return OP_OK;
+	}
+	LOCKUSER(username, table->u_locks, table->locks)
+	chat_user_t *user;
+	//se l'utente è registrato agggiorno le informazioni
+	if (CHECKNAME(table->users, username, user)) {
+		user->online = -1;
+		table->users_online--;
+	}
+	UNLOCKUSER(username, table->u_locks, table->locks)
+	free(username);
+	return OP_OK;
 }
 
 int send_text(users_table_t *table, char *sender, char *receiver, char *text, queue_t *fds) {
@@ -394,7 +477,7 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 		table->errori++;
 		return OP_FAIL;
 	}
-	if (strlen(text) > MAX_MSG_LENGTH) {
+	if (strlen(text) > table->max_msg_size) {
 		table->errori++;
 		return OP_MSG_TOOLONG;
 	}
@@ -420,9 +503,8 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 		}
 		UNLOCKUSER(sender, table->u_locks, table->locks)
 		//mittente e gruppo sono registrati memorizzo messaggi e prendo i file descriptor degli utenti online
-		LOCKALL(table->locks, table->u_locks+table->g_locks)
+		LOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 		char *username = malloc((MAX_NAME_LENGTH+1)*sizeof(char));
-		int ret;
 		for (int i=0; i<group->members->size; i++) {
 			memset(username, 0, (MAX_NAME_LENGTH+1)*sizeof(char));
 			//prendo uno a uno i nomi dei membri del gruppo
@@ -433,19 +515,12 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 				if(CHECKNAME(table->users, username, user)) {
 					if (user->online != -1) {
 						table->m_consegnati++;
-						insert_ele(fds, user->online);
-						ret = addMsg(user->msgs, text, sender, 1, 1);
-						if (ret != OP_OK) {
-							break;
-						}
+						insert_ele(fds, &(user->online));
+						store_msg(table, sender, text, TXT_MESSAGE, user->msgs, 1);
 					}
 					else {
 						table->m_in_attesa++;
-						ret = addMsg(user->msgs, text, sender, 1, 0);
-						if (ret != OP_OK) {
-							table->errori++;
-							break;
-						}
+						store_msg(table, sender, text, TXT_MESSAGE, user->msgs, 0);
 					}
 				}
 				//se un utente non è più registrato lo elimino dal gruppo
@@ -454,8 +529,8 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 			}
 		}
 		free(username);
-		UNLOCKALL(table->locks, table->u_locks+table->g_locks);
-		return ret;
+		UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks);
+		return OP_OK;
 	}
 	//invio messaggio a utente singolo
 	else {
@@ -472,24 +547,17 @@ int send_text(users_table_t *table, char *sender, char *receiver, char *text, qu
 			return OP_NICK_UNKNOWN;
 		}
 		else {
-			int ret;
 			if (ureceiver->online != -1) {
 				table->m_consegnati++;
-				insert_ele(fds, ureceiver->online);
-				ret = addMsg(ureceiver->msgs, text, sender, 1, 1);
-				if (ret != OP_OK) {
-					table->errori++;
-				}
+				insert_ele(fds, &(ureceiver->online));
+				store_msg(table, sender, text, TXT_MESSAGE, ureceiver->msgs, 1);
 			}
 			else {
 				table->m_in_attesa++;
-				ret = addMsg(ureceiver->msgs, text, sender, 1, 0);
-				if (ret != OP_OK) {
-					table->errori++;
-				}
+				store_msg(table, sender, text, TXT_MESSAGE, ureceiver->msgs, 0);
 			}
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return ret;
+			return OP_OK;
 		}
 	}
 }
@@ -499,56 +567,48 @@ int send_text_all(users_table_t *table, char *sender, char *text, queue_t *fds) 
 		table->errori++;
 		return OP_FAIL;
 	}
-	if (strlen(text) > MAX_MSG_LENGTH) {
+	if (strlen(text) > table->max_msg_size) {
 		table->errori++;
 		return OP_MSG_TOOLONG;
 	}
 	chat_user_t *usender;
-	LOCKALL(table->locks, table->u_locks+table->g_locks)
+	LOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 	if (!CHECKNAME(table->users, sender, usender)) {
 		//mittente non registrato
 		table->errori++;
-		UNLOCKALL(table->locks, table->u_locks+table->g_locks)
+		UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 		return OP_NICK_UNKNOWN;
 	}
-	int i, ret=-1;
+	int i;
 	icl_entry_t *tmp;
 	char *key;
 	chat_user_t *user;
 	icl_hash_foreach(table->users, i, tmp, key, user) {
 		//invio messaggio a tutti tranne che al mittente
-		if (user != NULL/* && strncmp(user->username, sender, MAX_NAME_LENGTH+1) != 0*/) {
-			if (user->online != -1) {
-				table->m_consegnati++;
-				insert_ele(fds, user->online);
-				ret = addMsg(user->msgs, text, sender, 1, 1);
-				if (ret != OP_OK) {
-					table->errori++;
-					break;
+		if (user != NULL) {
+			if ((strncmp(user->username, sender, MAX_NAME_LENGTH+1)) != 0) {
+				if (user->online != -1) {
+					table->m_consegnati++;
+					insert_ele(fds, &(user->online));
+					store_msg(table, sender, text, TXT_MESSAGE, user->msgs, 1);
+				}
+				else {
+					table->m_in_attesa++;
+					store_msg(table, sender, text, TXT_MESSAGE, user->msgs, 0);
 				}
 			}
-			else {
-				table->m_in_attesa++;
-				ret = addMsg(user->msgs, text, sender, 1, 1);
-				if (ret != OP_OK) {
-					table->errori++;
-					break;
-				}
-			}
-			UNLOCKALL(table->locks, table->u_locks+table->g_locks)
-			return ret;
 		}
 	}
-	UNLOCKALL(table->locks, table->u_locks+table->g_locks)
+	UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 	return OP_OK;
 }
 
-int send_file(users_table_t *table, char *sender, char *receiver, char *name, char *data, int writelen, queue_t *fds, char *dirpath, int max_size) {
-	if (!table || !sender || !receiver || !name || !data || !dirpath) {
+int send_file(users_table_t *table, char *sender, char *receiver, char *filename, char *data, int writelen, queue_t *fds, char *dirpath) {
+	if (!table || !sender || !receiver || !filename || !data || !dirpath) {
 		table->errori++;
 		return OP_FAIL;
 	}
-	if (strlen(data) > max_size) {
+	if (writelen > table->max_file_size*1000 || strlen(filename) > table->max_msg_size ) {
 		table->errori++;
 		return OP_MSG_TOOLONG;
 	}
@@ -574,16 +634,16 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 		}
 		UNLOCKUSER(sender, table->u_locks, table->locks)
 		//mittente e gruppo sono registrati memorizzo messaggi e prendo i file descriptor degli utenti online
-		LOCKALL(table->locks, table->u_locks+table->g_locks)
+		LOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 		char *username = malloc((MAX_NAME_LENGTH+1)*sizeof(char));
 		//creo messaggio
-		char *filepath = make_path(name, dirpath);
+		char *filepath = make_path(filename, dirpath);
 		int fd=-1, ret=-1;
 		TRY(fd, open(filepath, O_CREAT | O_RDWR, 0666), -1, "open", -1, 0);
-		ret = write_file(fd, (char *)data, writelen);
+		ret = write_file(fd, data, writelen);
 		if (ret == -1) {
 			table->errori++;
-			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
+			UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 			return OP_FAIL;
 		}
 		for (int i=0; i<group->members->size; i++) {
@@ -596,14 +656,10 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 				if(CHECKNAME(table->users, username, user)) {
 					//se l'utente è online lo metto in coda (per inviargli la notifica)
 					if (user->online != -1) {
-						insert_ele(fds, user->online);
+						insert_ele(fds, &(user->online));
 					}
 					//aggiungo comunque il messaggio nella history
-					ret = addMsg(user->msgs, name, sender, 0, 0);
-					if (ret != OP_OK) {
-						table->errori++;
-						break;
-					}
+					store_msg(table, sender, filename, FILE_MESSAGE, user->msgs, 0);
 				}
 				//se un utente non è più registrato lo elimino dal gruppo
 				else
@@ -612,7 +668,7 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 		}
 		free(filepath);
 		free(username);
-		UNLOCKALL(table->locks, table->u_locks+table->g_locks);
+		UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks);
 		return ret;
 	}
 	else {
@@ -630,30 +686,30 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *name, ch
 		}
 		else {
 			//creo messaggio
-			char *filepath = make_path(name, dirpath);
+			char *filepath = make_path(filename, dirpath);
 			int fd=-1, ret=-1;
 			TRY(fd, open(filepath, O_CREAT | O_RDWR, 0666), -1, "open", -1, 0);
-			ret = write_file(fd, (char *)data, writelen);
+			ret = write_file(fd, data, writelen);
 			if (ret == -1) {
 				table->errori++;
 				UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
 				return OP_FAIL;
 			}
 			if (ureceiver->online != -1) {
-				insert_ele(fds, ureceiver->online);
+				insert_ele(fds, &(ureceiver->online));
 			}
-			ret = addMsg(ureceiver->msgs, name, sender, 0, 0);
+			store_msg(table, sender, filename, FILE_MESSAGE, ureceiver->msgs, 0);
 			table->f_in_attesa++;
 			close(fd);
 			free(filepath);
 			UNLOCKINORDER(sender, receiver, table->u_locks, table->locks);
-			return ret;
+			return OP_OK;
 		}
 	}
 }
 
-int get_file(users_table_t *table, char *username, char *name, char *datadest, int *filelen, char *dirpath) {
-	if (!table || !username || !name || !dirpath) {
+int get_file(users_table_t *table, char *username, char *filename, char **datadest, int *filelen, char *dirpath) {
+	if (!table || !username || !filename || !dirpath) {
 		table->errori++;
 		return OP_FAIL;
 	}
@@ -666,7 +722,7 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 		return OP_NICK_UNKNOWN;
 	}
 	int ret=-1, fd=-1;
-	char *filepath = make_path(name, dirpath);
+	char *filepath = make_path(filename, dirpath);
 	struct stat info;
 	ret = stat(filepath, &info);
 	if (ret == -1) {
@@ -676,10 +732,13 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 	}
 	if (S_ISREG(info.st_mode)) {
 		if ((fd = open(filepath, O_RDONLY)) != -1) {
-			char *mappedfile = NULL;
-			mappedfile = mmap(NULL, info.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-			datadest = mappedfile;
-			*filelen = (int)info.st_size;
+			size_t size = info.st_size;
+			char *mappedfile;
+			mappedfile = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+			*datadest = malloc(size*sizeof(char));
+			memset(*datadest, 0, size);
+			strncpy(*datadest, mappedfile, size);
+			*filelen = size;
 			if (mappedfile == MAP_FAILED) {
 				perror("mmap");
 				close(fd);
@@ -710,24 +769,27 @@ int get_file(users_table_t *table, char *username, char *name, char *datadest, i
 }
 
 
-int get_history(users_table_t *table, char *username, msg_list_t *msgs) {
-	if (!table || !username || !msgs) {
+queue_t *get_history(users_table_t *table, char *username, int *retval) {
+	if (!table || !username) {
 		table->errori++;
-		return OP_FAIL;
+		*retval = OP_FAIL;
+		return NULL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
-	int ret;
+	queue_t *ret;
 	if (CHECKNAME(table->users, username, user)) {
 		//prendo i messaggi (nomi di file e testuali) che non sono stati già spediti
-		ret = getMsgList(user->msgs, msgs);
+		ret = user->msgs;
 		UNLOCKUSER(username, table->u_locks, table->locks)
+		*retval = OP_OK;
 		return ret;
 	}
 	//user non registrato
 	table->errori++;
 	UNLOCKUSER(username, table->u_locks, table->locks)
-	return OP_NICK_UNKNOWN;
+	*retval = OP_NICK_ALREADY;
+	return NULL;
 }
 
 char *users_list(users_table_t *table, int *n) {
@@ -735,10 +797,10 @@ char *users_list(users_table_t *table, int *n) {
 		table->errori++;
 		return NULL;
 	}
-	LOCKALL(table->locks, table->u_locks+table->g_locks)
+	LOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 	if (table->users->nentries < 0) {
 		table->errori++;
-		UNLOCKALL(table->locks, table->u_locks+table->g_locks)
+		UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 		return NULL;
 	}
 	int i, count=0;
@@ -753,14 +815,15 @@ char *users_list(users_table_t *table, int *n) {
 		}
 	}
 	*n = table->users->nentries;
-	UNLOCKALL(table->locks, table->u_locks+table->g_locks)
+	UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 	return list;
 }
 
-void get_stat(users_table_t *table, struct statistics *stats) {
+struct statistics *get_stat(users_table_t *table) {
 	if (!table)
-		return;
-	LOCKALL(table->locks, table->u_locks+table->g_locks)
+		return NULL;
+	LOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
+	struct statistics *stats = malloc(sizeof(struct statistics));
 	stats->nusers = table->users->nentries;
 	stats->nonline = table->users_online;
 	stats->ndelivered = table->m_consegnati;
@@ -768,5 +831,6 @@ void get_stat(users_table_t *table, struct statistics *stats) {
 	stats->nfiledelivered = table->f_consegnati;
 	stats->nfilenotdelivered = table->f_in_attesa;
 	stats->nerrors = table->errori;
-	UNLOCKALL(table->locks, table->u_locks+table->g_locks)
+	UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
+	return stats;
 }

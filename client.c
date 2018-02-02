@@ -80,6 +80,7 @@ static int readMessage(int connfd, message_hdr_t *hdr) {
 	perror("reading data");
 	return -1; 
     }
+
     // NOTA: la gestione di MSGS e' molto brutale: non si libera mai memoria
     
     MSGS[msgcur].hdr = *hdr;
@@ -111,7 +112,6 @@ static int downloadFile(int connfd, char *filename, char *sender) {
 	// differenti tipi di risposta che posso ricevere
 	switch(msg.hdr.op) {
 	case OP_OK: {
-		fprintf(stdout, "errrore qui est\n"); fflush(stdout);
 	    if (readData(connfd, &msg.data) <= 0) return -1;
 	    return 0;
 	} break;
@@ -194,11 +194,12 @@ static int execute_requestreply(int connfd, operation_t *o) {
 	    perror("reply header");
 	    return -1;
 	}
+	
 	// differenti tipi di risposta che posso ricevere
 	switch(msg.hdr.op) {
 	case OP_OK:  ackok = 1;     break;
 	case TXT_MESSAGE:
-	case FILE_MESSAGE: {  	    
+	case FILE_MESSAGE: {  	    fprintf(stdout, "------------------------------------>sargio\n");
 	    /* Non ho ricevuto la risposta ma messaggi da altri client, 
 	     * li conservo in MSGS per gestirli in seguito.
 	     */
@@ -214,11 +215,7 @@ static int execute_requestreply(int connfd, operation_t *o) {
 	} break;
 	default: {
 	    fprintf(stderr, "ERRORE: risposta non valida\n");
-		fprintf(stdout, "-------------->%d------->\n", msg.hdr.op);
-		for (int i=0; i<MAX_NAME_LENGTH; i++) {
-			fprintf(stdout, "-------------%c--------\n", msg.hdr.sender[i]);
-		}
-		return -1;
+	    return -1;
 	}
 	}
     }
@@ -234,7 +231,7 @@ static int execute_requestreply(int connfd, operation_t *o) {
 	}	
 	int nusers = msg.data.hdr.len / (MAX_NAME_LENGTH+1);
 	assert(nusers > 0);
-	printf("Lista utenti online di %s:\n", sname);
+	printf("Lista utenti online:\n");
 	for(int i=0,p=0;i<nusers; ++i, p+=(MAX_NAME_LENGTH+1)) {
 	    printf(" %s\n", &msg.data.buf[p]);
 	}
@@ -246,6 +243,7 @@ static int execute_requestreply(int connfd, operation_t *o) {
 	}	
 	// numero di messaggi che devo ricevere
 	size_t nmsgs = *(size_t*)(msg.data.buf); 
+	fprintf(stdout, "nmssgs %d\n", nmsgs); fflush(stdout);
 	char *FILENAMES[nmsgs]; // NOTA: si suppone che nmsgs non sia molto grande
 	size_t nfiles=0;
 	for(size_t i=0;i<nmsgs;++i) {
@@ -309,7 +307,7 @@ static int execute_receive(int connfd, operation_t *o) {
 		}
 		printf("[Il file '%s' e' stato scaricato correttamente]\n",filename);
 	    } else 
-		printf("[%s:] %s\n", MSGS[i].hdr.sender, (char*)MSGS[i].data.buf);
+		printf("Nome %s, [%s:] %s\n",sname, MSGS[i].hdr.sender, (char*)MSGS[i].data.buf);
 
 	    if (++c == m) break;
 	}
@@ -320,7 +318,7 @@ static int execute_receive(int connfd, operation_t *o) {
 	if (readMsg(connfd, &msg) == -1) {
 	    perror("reply data");
 	    return -1; 
-	}
+	}	
 	switch(msg.hdr.op) {
 	case TXT_MESSAGE: {
 	    printf("[%s:] %s\n", msg.hdr.sender, (char*)msg.data.buf);
@@ -337,11 +335,7 @@ static int execute_receive(int connfd, operation_t *o) {
 	    printf("[Il file '%s' e' stato scaricato correttamente]\n",filename);
 	} break;
 	default: {
-	    fprintf(stderr, "ERRORE: ricevuto messaggio non valido %d\n", msg.hdr.op);
-	fprintf(stdout, "-------------->%d------->\n", msg.hdr.op);
-		for (int i=0; i<MAX_NAME_LENGTH*10; i++) {
-			fprintf(stdout, "-------------%c--------\n", msg.hdr.sender[i]);
-		}
+	    fprintf(stderr, "ERRORE: ricevuto messaggio non valido\n");
 	    return -1;
 	}
 	}	    

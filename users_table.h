@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include "string_list.h"
 #include "stats.h"
+#include "message.h"
 
 //acquisisce tutte le lock
 #define LOCKALL(locks, n)			\
@@ -32,7 +33,7 @@ Struttura per memorizzare i dati di un utente
 typedef struct chat_user {
 	char username[MAX_NAME_LENGTH+1];		//nome utente
 	int online;					//-1 = offline, >0 = fd su cui è connesso il client
-	msg_list_t *msgs;				//lista degli ultimi messaggi ricevuti dall'utente
+	queue_t *msgs;				//lista degli ultimi messaggi ricevuti dall'utente
 } chat_user_t;
 
 /*
@@ -44,23 +45,48 @@ typedef struct chat_group {
 	char owner[MAX_NAME_LENGTH+1];		//nome del proprietario del gruppo
 } chat_group_t;
 
+typedef struct chat_message {
+	message_t *message;
+	int consegnato;
+} chat_message_t;
+
 /*
 Struttura della tabella utenti
 */
 typedef struct users_table {
-	icl_hash_t *users;	//tabella hash contenente gli utenti iscritti (vedi struct sopra)
-	icl_hash_t *groups;	//tabella hash contenente i gruppi registrati (vedi struct sopra)
-	pthread_mutex_t *locks;	//array di lock per la sincronizzazione
-	int u_locks;		//numero di lock utilizzate per la sincronizzazione sugli utenti
-	int g_locks;		//numero di lock utilizzate per la sincornizzazione sui gruppi
-	int history;		//massimo numero di messaggi tenuti in memoria per ogni utente
-	int m_consegnati;	//messaggi consegnati
-	int m_in_attesa;	//messaggi da consegnare
-	int f_consegnati;	//file consegnati
-	int f_in_attesa;	//file da consegnare
-	int users_online;	//utenti online
-	int errori;		//numero di messaggi di errore del server
+	icl_hash_t *users;		//tabella hash contenente gli utenti iscritti (vedi struct sopra)
+	icl_hash_t *groups;		//tabella hash contenente i gruppi registrati (vedi struct sopra)
+	pthread_mutex_t *locks;		//array di lock per la sincronizzazione
+	int u_locks;			//numero di lock utilizzate per la sincronizzazione sugli utenti
+	int g_locks;			//numero di lock utilizzate per la sincornizzazione sui gruppi
+	int fd_locks;			//numero di lock utilizzate per la sincornizzazione sui descrittori
+	string_list_t *online_users;	//lista dei nomi degli utenti attualmente connessi e il descrittori associati
+	int history;			//massimo numero di messaggi tenuti in memoria per ogni utente
+	int max_msg_size;		//lunghezza massima di un messaggio
+	int max_file_size;		//lunghezza massima del nome di un messaggio
+	int m_consegnati;		//messaggi consegnati
+	int m_in_attesa;		//messaggi da consegnare
+	int f_consegnati;		//file consegnati
+	int f_in_attesa;		//file da consegnare
+	int users_online;		//utenti online
+	int errori;			//numero di messaggi di errore del server
 } users_table_t;
+
+/*
+Libera la memoria occupata da un chat_message_t
+
+param:
+data - puntatore da liberare
+*/
+void freeChatMessage(void *data);
+
+/*
+Libera la memoria occupata da un message_t
+
+param:
+data - puntatore da liberare
+*/
+void freeMessage(void *data);
 
 /*
 Crea una nuova tabella vuota
@@ -68,12 +94,15 @@ Crea una nuova tabella vuota
 param:
 u_locks - numero di mutex da utilizzare per sincronizzarsi sugli user
 g_locks - numero di mutex da utilizzare per sincornizzarsi sui gruppi
+fd_locks - numero di mutex da utilizzare per sincornizzarsi sui descrittori
 n_buckets - numero di buckets per le tabelle hash
 history - numero massimo di messaggi memorizzati
+max_msg_size - lunghezza massima di un messaggio
+max_file_size - lunghezza massima del nome di un messaggio
 
 retval: puntatore alla tabella appena creata
 */
-users_table_t *create_table(int u_locks, int g_locks, int n_buckets, int hisotry);
+users_table_t *create_table(int u_locks, int g_locks, int fd_locks, int n_buckets, int hisotry, int max_msg_size, int max_file_size);
 
 /*
 Distrugge una tabella
@@ -197,7 +226,20 @@ retval:
 OP_OK - successo
 OP_FAIL - errore
 */
-int set_offline(users_table_t *table, char *username);
+int set_offline(users_table_t *table, char *username, int fd);
+
+/*
+Rimuove un file descriptor dalla lista online e contrassegna l'utente associato come offline
+
+param:
+table - tabella inizializzata
+fd - descrittore da rimuovere
+
+retval:
+OP_OK - successo
+OP_FAIL - errore
+*/
+int set_offline_fd(users_table_t *table, int fd);
 
 /*
 Memorizza un messaggio diretto a un utente o ai membri di un gruppo
@@ -253,7 +295,7 @@ OP_NICK_UNKNOWN - sender o receiver non registrati
 OP_FAIL - errore
 OP_MSG_TOOLONG - file troppo lungo
 */
-int send_file(users_table_t *table, char *sender, char *receiver, char *name, char *data, int writelen, queue_t *fds, char *dirpath, int max_size);
+int send_file(users_table_t *table, char *sender, char *receiver, char *name, char *data, int writelen, queue_t *fds, char *dirpath);
 
 /*
 Prepara il file da spedire all'utente che lo ha richiesto
@@ -271,7 +313,7 @@ OP_OK - successo
 OP_NICK_UNKNOWN - username non registrato
 OP_FAIL - errore
 */
-int get_file(users_table_t *table, char *username, char *name, char *datadest, int *filelen, char *dirpath);
+int get_file(users_table_t *table, char *username, char *name, char **datadest, int *filelen, char *dirpath);
 
 /*
 Restituisce una lista contenente i messaggi e i nomi di file non ancora consegnati a un certo utente
@@ -286,7 +328,7 @@ OP_OK - successo
 OP_FAIL - errore
 OP_NICK_UNKNOWN - username non registrato
 */
-int get_history(users_table_t *table, char *username, msg_list_t *msgs);
+queue_t *get_history(users_table_t *table, char *username, int *retval);
 
 /*
 Inserisce in sequenza i nomi degli utenti registrati in una stringa
@@ -301,12 +343,11 @@ NULL se la lista è vuota*/
 char *users_list(users_table_t *table, int *n);
 
 /*
-Aggiorna la struttura delle statistiche
+Restitiuisce la struttura delle statistiche
 
 param:
 table - tabella inizializzata
-stats - struttura delle statistiche
 */
-void get_stat(users_table_t *table, struct statistics *stats);
+struct statistics *get_stat(users_table_t *table);
 
 #endif

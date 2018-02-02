@@ -12,13 +12,14 @@
 #include "ops.h"
 
 
-msg_list_t *createMsgList(int history) {
+msg_list_t *createMsgList(int history, int max_size) {
 	msg_list_t *list = malloc(sizeof(msg_list_t));
 	if (!list)
 		return NULL;
 	list->history = history;
 	list->msgs = 0;
 	list->files = 0;
+	list->max_size = max_size;
 	list->head = NULL;
 	list->tail = NULL;
 	return list;
@@ -33,7 +34,8 @@ int addMsg(msg_list_t *list, char *text, char *sender, int type, int consegnato)
 	msg_t *tmp = malloc(sizeof(msg_t));
 	memset(tmp->sender, 0, MAX_NAME_LENGTH+1);
 	strncpy(tmp->sender, sender, strlen(sender));
-	memset(tmp->text, 0, MAX_MSG_LENGTH+1);
+	tmp->text = malloc(sizeof(char)*list->max_size);
+	memset(tmp->text, 0, list->max_size);
 	strncpy(tmp->text, text, strlen(text));
 	tmp->type = type;
 	tmp->consegnato = consegnato;
@@ -61,6 +63,7 @@ int addMsg(msg_list_t *list, char *text, char *sender, int type, int consegnato)
 		int old_type = list->head->type;
 		msg_t *tmp2 = list->head;
 		list->head = list->head->next;
+		free(tmp2->text);
 		free(tmp2);
 		list->tail->next = tmp;
 		list->tail = tmp;
@@ -88,6 +91,7 @@ void deleteMsgList(msg_list_t *list) {
 			list->msgs--;
 		else
 			list->files--;
+		free(tmp->text);
 		free(tmp);
 	}
 	free(list);

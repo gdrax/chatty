@@ -11,7 +11,16 @@
 #include <stdlib.h>
 #include "utility.h"
 
-
+void printSList(string_list_t *list) {
+	if (!list)
+		return;
+	s_ele_t *tmp = list->head;
+	while(tmp != NULL) {
+		fprintf(stdout, "fd: %d 	nick: %s\n", tmp->fd, tmp->data);
+		fflush(stdout);
+		tmp = tmp->next;
+	}
+}
 
 string_list_t *createSList(int history) {
 	string_list_t *list = malloc(sizeof(string_list_t));
@@ -19,7 +28,6 @@ string_list_t *createSList(int history) {
 		return NULL;
 	list->size = 0;
 	list->head = NULL;
-	list->tail = NULL;
 	return list;
 }
 
@@ -35,7 +43,7 @@ void deleteSList(string_list_t *list) {
 	free(list);
 }
 
-int addString(string_list_t *list, char *string) {
+int addString(string_list_t *list, char *string, int fd) {
 	if (!list || !string)
 		return -1;
 	//se la stringa è già presente nella lista non la inserisco
@@ -47,17 +55,18 @@ int addString(string_list_t *list, char *string) {
 	TRY(tmp, malloc(sizeof(s_ele_t)), NULL, "malloc", -1, 0)
 	TRY(tmp->data, malloc((MAX_NAME_LENGTH+1)*sizeof(char)), NULL, "malloc", -1, 0)
 	strncpy(tmp->data, string, MAX_NAME_LENGTH+1);
+	tmp->fd = fd;
 	tmp->next = NULL;
 	//se la lista è vuota
 	if (list->head == NULL) {
 		list->head = tmp;
-		list->tail = tmp;
 		list->size++;
 	}
-	//se ci sono già altri elementi
 	else {
-		list->tail->next = tmp;
-		list->tail = tmp;
+		s_ele_t *corr = list->head;
+		while(corr->next != NULL)
+			corr = corr->next;
+		corr->next = tmp;
 		list->size++;
 	}
 	return 0;
@@ -65,6 +74,8 @@ int addString(string_list_t *list, char *string) {
 
 int removeString(string_list_t *list, char *string) {
 	if (list == NULL || string == NULL)
+		return -1;
+	if (!list->head)
 		return -1;
 	s_ele_t *corr;
 	corr = list->head;
@@ -75,23 +86,24 @@ int removeString(string_list_t *list, char *string) {
 		free(corr);
 	}
 	else {
-		s_ele_t *tmp, *prec;
-		prec = list->head;
-		corr = list->head->next;
-		while(corr->next != NULL && prec != NULL) {
-			if (strcmp(corr->data, string) == 0) {
-				tmp = corr;
-				prec->next = corr->next;
-				list->size--;
-				free(tmp);
+		s_ele_t *tmp;
+		while(corr != NULL) {
+			if (!corr->next)
+				return 0;
+			if (strcmp(corr->next->data, string) == 0)
 				break;
-			}
-			else {
-				corr = corr->next;
-				prec = prec->next;
-			}
+		corr = corr->next;
 		}
+		tmp = corr->next;
+		corr->next = tmp->next;
+		tmp->next = NULL;
+		list->size--;
+		free(tmp);
 	}
+			fprintf(stdout, "after all 22\n");
+			fflush(stdout);
+printSList(list);
+
 	return 0;
 }
 
@@ -131,3 +143,80 @@ int getByIndex(string_list_t *list, int index, char *string) {
 	free(string);
 	return -1;
 }
+
+/*
+Cambia il descrittore di file associato a una stringa
+
+param:
+list - lista già inizializzata
+string - stringa asociata
+fd - nuovo descrittore
+
+retval:
+-1 - errore
+0 - successo
+*/
+int update_fd(string_list_t *list, char *string, int fd) {
+	if (list == NULL || string == NULL)
+		return -1;
+	s_ele_t *tmp;
+	tmp = list->head;
+	while(tmp != NULL) {
+		if (strcmp(tmp->data, string) == 0)
+			tmp->fd = fd;
+		else
+			tmp = tmp->next;
+	}
+	return 0;
+}
+/*
+Rimuove la stringa associata ad un descrittore e la restituisce
+
+param:
+list - lista già inizializzata
+fd - descrittore da rimuovere
+
+retval:
+NULL: errore
+stringa associata al descrittore: successo
+*/
+
+
+char * disconnect_fd(string_list_t *list, int fd) {
+	if (list == NULL)
+		return NULL;
+	if (!list->head)
+		//lista vuota
+		return NULL;
+	char *name = NULL;
+	printSList(list);
+	s_ele_t *corr;
+	corr = list->head;
+	if (list->head->fd == fd) {
+		//la stringa da eliminare è in testa
+		name = malloc(MAX_NAME_LENGTH+1*sizeof(char));
+		memset(name, 0, MAX_NAME_LENGTH+1);
+		strncpy(name, list->head->data, strlen(list->head->data));
+		list->head = list->head->next;
+		list->size--;
+		free(corr);
+	}
+	else {
+		while(corr != NULL) {
+			if (!corr->next)
+				return 0;
+			if (corr->next->fd == fd)
+				break;
+			corr = corr->next;
+		}
+		s_ele_t *tmp = corr->next;
+		name = malloc(MAX_NAME_LENGTH+1*sizeof(char));
+		memset(name, 0, MAX_NAME_LENGTH+1);
+		strncpy(name, tmp->data, strlen(tmp->data));
+		corr->next = tmp->next;
+		tmp->next = NULL;
+		free(tmp);
+	}
+	return name;
+}
+

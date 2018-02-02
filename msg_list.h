@@ -14,7 +14,7 @@
 Struttura di un messaggio
 */
 typedef struct msg {
-	char text[MAX_MSG_LENGTH+1];	//contenuto del messaggio
+	char *text;	//contenuto del messaggio
 	char sender[MAX_NAME_LENGTH+1];	//mittente del messaggio
 	int type;			//tipo del messaggio: 0 = nome di file, 1 = messaggio di testo
 	int consegnato;			//stato di consegna: 0 = da conegnare, 1 = consegnato
@@ -28,6 +28,7 @@ typedef struct msg_list {
 	int history;	//massimo numero di messaggi da memorizzare
 	int msgs;	//numero di messaggi testuali nella lista
 	int files;	//numero di nomi di file nella lista
+	int max_size;	//lunghezza massima di un messaggio
 	msg_t *head;
 	msg_t *tail;
 } msg_list_t;
@@ -38,11 +39,12 @@ Crea una nuova lista
 
 param:
 history - massima lunghezza che la lista potrà avere
+max_size - lunghezza massima di un messaggio
 
 retval:
 puntatore alla lista appena creata
 */
-msg_list_t *createMsgList(int history);
+msg_list_t *createMsgList(int history, int max_size);
 
 /*
 Aggiunge messaggio nella lista (nel caso sia piena, elimina quello più vecchio)

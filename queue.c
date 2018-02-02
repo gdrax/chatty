@@ -1,57 +1,70 @@
-/*
-	\file queue.c
-	\author Bertoncini Gioele 
-	Si dichiara che il contenuto di questo file e' in ogni sua parte opera originale dell'autore
-*/
+#include <stdlib.h>
+#include <assert.h>
+#include <pthread.h>
+#include <queue.h>
 
-#include"queue.h"
-#include"utility.h"
-#include<string.h>
+/**
+ * @file queue.c
+ * @brief File di implementazione dell'interfaccia per la coda
+ */
 
-queue_t *create_queue() {
-	queue_t *q;
-	TRY(q, malloc(sizeof(queue_t)), NULL, "malloc", NULL, 1)
-	TRY(q->head, malloc(sizeof(qnode_t)), NULL, "malloc", NULL, 1)
-	q->head->fd = -1;
-	q->head->next = NULL;
-	q->tail = q->head;
-	q->len = 0;
-	return q;
+
+/* ------------------- funzioni di utilita' -------------------- */
+
+static Node_t *allocNode()         { return malloc(sizeof(Node_t));  }
+static queue_t *allocQueue()       { return malloc(sizeof(queue_t)); }
+static void freeNode(Node_t *node) { free((void*)node); }
+
+/* ------------------- interfaccia della coda ------------------ */
+
+queue_t *create_queue(void (*free_data)(void*)) {
+    queue_t *q = allocQueue();
+    if (!q) return NULL;
+    q->head = allocNode();
+    if (!q->head) return NULL;
+    q->head->data = NULL; 
+    q->head->next = NULL;
+    q->tail = q->head;
+    q->len = 0;
+    q->free_data = free_data;
+    return q;
 }
 
 void delete_queue(queue_t *q) {
-	while (q->head !=NULL) {
-		qnode_t *old = q->head;
-		q->head = q->head->next;
-		free(old);
-	}
-	free(q);
+    while(q->head != q->tail) {
+    Node_t *p = (Node_t*)q->head;
+    q->head = q->head->next;
+    if (*q->free_data && p->data) (*q->free_data)(p->data);
+    freeNode(p);
+    }
+    if (q->head) freeNode(q->head);
+    if (q) free(q);
 }
 
-int insert_ele(queue_t *q, int fd) {
-	if (!q || fd < 0)
-		return -1;
-	qnode_t *new;
-	TRY(new, malloc(sizeof(qnode_t)), NULL, "malloc", -1, 1)
-	new->fd = fd;
-	new->next = NULL;
-	q->tail->next = new;
-	q->tail = new;
-	q->len++;
-	return 0;
+int insert_ele(queue_t *q, void *data) {
+    Node_t *n = allocNode();
+    n->data = data; 
+    n->next = NULL;
+    q->tail->next = n;
+    q->tail       = n;
+    q->len      += 1;
+    return 0;
 }
 
-int take_ele(queue_t *q) {
-	if (!q) {
-		return -1;
-	}
-	if (q->head == NULL) {
-		return -1;
-	}
-	qnode_t *old = q->head;
-	int ret = q->head->next->fd;
-	q->head = q->head->next;
-	q->len--;
-	free(old);
-	return ret;
+void *take_ele(queue_t *q) {
+    if (!q->head->next) return NULL;
+    Node_t *n  = (Node_t *)q->head;
+    void *data = (q->head->next)->data;
+    q->head    = q->head->next;
+    q->len   -= 1;
+    assert(q->len>=0);
+    freeNode(n);
+    return data;
+} 
+
+// accesso in sola lettura non in mutua esclusione
+unsigned long length(queue_t *q) {
+    unsigned long len = q->len;
+    return len;
 }
+
