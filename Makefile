@@ -9,7 +9,7 @@
 ##########################################################
 # IMPORTANTE: completare la lista dei file da consegnare
 # 
-FILE_DA_CONSEGNARE=Makefile chatty.c message.h ops.h stats.h config.h chat_parser.h chat_parser.c connections.c connections.h icl_hash.c icl_hash.h listener.c msg_list.c msg_list.h queue.c queue.h Relazione.pdf string_list.c string_list.h users_table.c users_table.h utility.h\
+FILE_DA_CONSEGNARE=Makefile chatty.c message.h ops.h stats.h config.h chat_parser.h chat_parser.c connections.c connections.h icl_hash.c icl_hash.h listener.c queue.c queue.h Relazione.pdf string_list.c string_list.h users_table.c users_table.h utility.h\
 		   DATA/chatty.conf1 DATA/chatty.conf2 connections.h 
 # inserire il nome del tarball: es. NinoBixio
 TARNAME=GioeleBertoncini
@@ -47,15 +47,13 @@ LIBS            = -pthread
 
 # aggiungere qui altri targets se necessario
 TARGETS		= chatty        \
-		  client	\
-		  test_users
+		  client
 
 
 # aggiungere qui i file oggetto da compilare
 OBJECTS		= chat_parser.o	\
 		  connections.o	\
 		  queue.o	\
-		  msg_list.o	\
 		  string_list.o	\
 		  users_table.o	\
 		  icl_hash.o	\
@@ -71,7 +69,6 @@ INCLUDE_FILES   = connections.h \
 		  utility.h	\
 		  chat_parser.h	\
 		  queue.h	\
-		  msg_list.h	\
 		  string_list.h	\
 		  users_table.h	\
 		  icl_hash.h
@@ -96,8 +93,8 @@ chatty: chatty.o libchatty.a $(INCLUDE_FILES)
 client: client.o connections.o message.h
 	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-test_users: test_users.c libchatty.a $(INCLUDE_FILES)
-	$(CC) $(FLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
+#test_users: test_users.c libchatty.a $(INCLUDE_FILES)
+#	$(CC) $(FLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 ############################ non modificare da qui in poi
 

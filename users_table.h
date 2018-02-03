@@ -9,7 +9,6 @@
 
 #include "icl_hash.h"
 #include "queue.h"
-#include "msg_list.h"
 #include "config.h"
 #include "utility.h"
 #include <pthread.h>
@@ -49,10 +48,10 @@ typedef struct chat_group {
 Struttura per memorizzare un messaggio della history di un utente
 */
 typedef struct chat_message {
-	char sender[MAX_NAME_LENGTH+1];
-	char *text;
-	int type;
-	int consegnato;
+	char sender[MAX_NAME_LENGTH+1];		//nickname del mittente
+	char *text;				//contenuto del messaggio
+	int type;				//FILE_MESSAGE o TXT_MESSAGE
+	int consegnato;				//stato di consegna (0 = non consegnato, 1 = già consegnato)
 } chat_message_t;
 
 /*
@@ -153,7 +152,7 @@ Crea un nuovo gruppo aggiungendoci il suo creatore
 
 param:
 table - tabella inizializzata
-username - nome del creatore del gruppo
+owner - nome del creatore del gruppo
 groupname - nome del gruppo da creare
 
 retval:
@@ -225,6 +224,7 @@ Contrassegna un utente come offline
 param:
 table - tabella inizializzata
 username - nome dell'utente
+fd - file descriptor su cui l'utente è attualmente connesso
 
 retval:
 OP_OK - successo
@@ -287,11 +287,11 @@ param:
 table - tabella inizializzata
 sender - nome del mittente
 receiver - destinatario del file (utente o gruppo)
+name - nome del file
 data - contenuto del file
 writelen - lunghezza del file
 fds - coda di file descriptor a cui inviare il messaggio (uno solo se il receiver è un utente, più di uno se è un gruppo)
 dirpath - directory nella quale memorizzare il file
-max_size - lunghezza massima di file accettato dal server
 
 retval:
 OP_OK - messaggio inviato correttamente
@@ -325,7 +325,7 @@ Restituisce una lista contenente i messaggi e i nomi di file non ancora consegna
 param:
 table - tabella inizializzata
 username - nome dell'utente
-msgs - lista dove verranno restituiti i messaggi da consengare
+msgs - coda dove verranno restituiti i messaggi da consengare (già inizializzata)
 
 retval:
 OP_OK - successo
@@ -351,6 +351,9 @@ Restitiuisce la struttura delle statistiche
 
 param:
 table - tabella inizializzata
+
+retval:
+struttura contenente le statistiche aggiornate
 */
 struct statistics *get_stat(users_table_t *table);
 

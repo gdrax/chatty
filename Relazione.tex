@@ -29,18 +29,21 @@ Il server utilizza 1 thread per gestire i segnali \emph{signal\_handler} che si 
 Il main fa anche uso delle funzioni fornite da \emph{chat\_parser.h} e \emph{chat\_parser.c} per recuperare dal file di configurazione le informazioni necessarie per il funzionamento del server. In aggiunta a quelle già previste dal kit del progetto sono state aggiunte:
 
 \begin{tabular}{ll}
-	UserLocks & Numero di mutex utilizzate per sincronizzarsi sugli utenti\\
-	GroupLocks & Numero di mutex utilizzate per sincronizzarsi sui gruppi\\
-	FdLocks & Numero di mutex utilizzate per sincronizzarsi sui descrittori\\
-	Buckets & Numero di buckets per le tabelle hash\\
+	\textbf{UserLocks} & Numero di mutex utilizzate per sincronizzarsi sugli utenti\\
+	\textbf{GroupLocks} & Numero di mutex utilizzate per sincronizzarsi sui gruppi\\
+	\textbf{FdLocks} & Numero di mutex utilizzate per sincronizzarsi sui descrittori\\
+	\textbf{Buckets} & Numero di buckets per le tabelle hash\\
 \end{tabular}
 
 \section{Terinazione del server}
-Quando il thread signal\_handler riceve il segnale SIGUSR1 scrive un -1 sulla pipe del listener, quando quest'ultimo lo legge invia n messaggi con operazione OP\_END sulla coda dove n è il numero dei thread worker.
+Quando il thread \emph{signal\_handler} riceve il segnale SIGUSR1 scrive un -1 sulla pipe del \emph{listener}, quando quest'ultimo lo legge invia n messaggi con operazione OP\_END sulla coda dove n è il numero dei thread \emph{worker}, il thread \emph{dispatcher} viene cancellato.
 
 
 \section{Script bash}
 Lo script bash si serve dei comandi cut e grep per selezionare il pattern corrispondene e di tr per eliminare spazi e tab. Inoltre utilizza il comando find per eliminare i file più vecchi.
 \section{Sviluppo del codice}
-Tutto il codice è stato sviluppato su \emph{Fedora 27}, compilato e testato tramite il Makefile fornito nel kit del progetto.
+Tutto il codice è stato sviluppato utilizzando \emph{gedit} su \emph{Fedora 27}, compilato e testato tramite il Makefile fornito nel kit del progetto.
+\section{Note}
+Nel file \emph{icl\_hash.c} nella funzione di eliminazione di un elemento il contatore degli oggetti contenuti nella tabella hash veniva incrementato anzichè ridotto.
+Nell'implentazione della tabella degli utenti c'è anche una funzione per l'eliminazione dei gruppi, non viene mai usata dai test.
 \end{document}

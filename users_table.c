@@ -14,10 +14,6 @@
 
 
 #include "users_table.h"
-#include "msg_list.h"
-#include "utility.h"
-#include "icl_hash.h"
-#include "config.h"
 #include "ops.h"
 
 
@@ -155,9 +151,9 @@ void store_msg(users_table_t *table, char *sender, char *text, int type, queue_t
 	chat_message_t *new = malloc(sizeof(chat_message_t)), *tmp;
 	memset(new, 0, sizeof(chat_message_t));
 	new->text = malloc(sizeof(char)*(strlen(text)+1));
-	memset(new->text, 0, strlen(text));
+	memset(new->text, 0, strlen(text)+1);
 	strncpy(new->text, text, strlen(text));
-	strncpy(new->sender, sender, strlen(text));
+	strncpy(new->sender, sender, strlen(sender));
 	new->consegnato = status;
 	new->type = type;
 	insert_ele(q, new);
@@ -168,6 +164,9 @@ void store_msg(users_table_t *table, char *sender, char *text, int type, queue_t
 	}
 }
 
+
+
+/*				Funzioni di interfaccia					*/
 
 users_table_t *create_table(int u_locks, int g_locks, int fd_locks, int n_buckets, int history, int max_msg_size, int max_file_size) {
 	if (u_locks <= 0) u_locks = 8;
@@ -393,6 +392,8 @@ int leave_group(users_table_t *table, char *username, char *groupname) {
 			UNLOCKUSER(username, table->u_locks, table->locks)
 			return OP_FAIL;
 		}
+		UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
+		UNLOCKUSER(username, table->u_locks, table->locks)
 		return OP_OK;
 	}
 }
@@ -667,7 +668,7 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *filename
 		free(filepath);
 		free(username);
 		UNLOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks);
-		return ret;
+		return OP_OK;
 	}
 	else {
 		UNLOCKGROUP(receiver, table->u_locks, table->g_locks, table->locks)
@@ -684,8 +685,6 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *filename
 		}
 		else {
 			//creo messaggio
-		fprintf(stdout, "filename %s\n", filename);
-		fflush(stdout);
 			char *filepath = make_path(filename, dirpath);
 			int fd=-1, ret=-1;
 			TRY(fd, open(filepath, O_CREAT | O_RDWR, 0666), -1, "open", -1, 0);

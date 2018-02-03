@@ -234,7 +234,7 @@ void *worker(void *data) {
 	while (1) {
 		LOCK(&queue_lock)
 		while(pending_requests->len == 0) {
-			fprintf(stdout, "WORKER %d: Mi sospendo su newRequest\n", id);
+			//fprintf(stdout, "WORKER %d: Mi sospendo su newRequest\n", id);
 			CHECK((pthread_cond_wait(&newRequest, &queue_lock) != 0), "Pthread wait", NULL, 1)
 		}
 		//prendo una richiesta dalla coda
@@ -272,7 +272,7 @@ void *worker(void *data) {
 			if (request->hdr.op == GETPREVMSGS_OP) {
 				size_t n = list->len;
 				setData(&(ack->data), "", (char *)&n, sizeof(n));
-				fprintf(stdout, "%ld\n", *(size_t*)ack->data.buf);
+				//fprintf(stdout, "%ld\n", *(size_t*)ack->data.buf);
 			}
 			if((ret = sendRequest(fd, ack)) == 0)
 				break;
@@ -594,6 +594,11 @@ int main(int argc, char *argv[]) {
 	//creo coda delle connessioni
 	pending_requests = create_queue(freeRequest);
 
+/*	//imposto gli attributi dei thread*/
+/*	pthread_attr_t attr;*/
+/*	pthread_attr_init(&attr);*/
+/*	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);*/
+
 	//creo struttura da passare ai thread e inizializzo la pipe
 	struct thread_info infos;
 	CHECK((pipe(infos.fd_pipe) == -1), "pipe", 0, 1);
@@ -621,10 +626,9 @@ int main(int argc, char *argv[]) {
 	pthread_join(th_listener, NULL);
 	fprintf(stdout, "SERVER: Thread listener terminato\n");
 	for (int i=0; i<conf_data->th_in_pool; i++) {
-		PRINT("SARGIO")
 		pthread_join(workers[i], NULL);
-		PRINT("SERVER: Thread worker terminato")
 	}
+	PRINT("SERVER: Threads worker terminati")
 	pthread_join(th_signal_handler, NULL);
 	pthread_detach(th_dispatcher);
 	pthread_cancel(th_dispatcher);
