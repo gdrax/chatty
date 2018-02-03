@@ -95,38 +95,30 @@ unsigned int djb2(void *str) {
 
 //libera la struttura di un user
 void freeUser(void *data) {
-	if (data) {
 		chat_user_t *user = (chat_user_t *)data;
-		delete_queue(user->msgs);
-		free(user);
-	}
+	if (user) delete_queue(user->msgs);
+	free(user);
 }
 
 //libera la struttura di un group
 void freeGroup(void *data) {
-	if (data) {
-		chat_group_t *group = (chat_group_t *)data;
-		deleteSList(group->members);
-		free(group);
-	}
+	chat_group_t *group = (chat_group_t *)data;
+	if (group) deleteSList(group->members);
+	free(group);
 }
 
 //libera un chat_message
 void freeChatMessage(void *data) {
-	if (data) {
 		chat_message_t *tmp = (chat_message_t *)data;
-		freeMessage(tmp->message);
+		if (tmp) freeMessage(tmp->message);
 		free(tmp);
-	}
 }
 
 //libera un message_t
 void freeMessage(void *data) {
-	if (data) {
 		message_t *tmp = (message_t *)data;
-		free(tmp->data.buf);
+		if (tmp) free(tmp->data.buf);
 		free(tmp);
-	}
 }
 
 //concatena un nome file con l'indirizzo di una directory
@@ -791,7 +783,7 @@ int get_history(users_table_t *table, char *username, queue_t *list) {
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
 	if (CHECKNAME(table->users, username, user)) {
-		//prendo i messaggi (nomi di file e testuali) che non sono stati già spediti
+		//prendo i messaggi che non sono stati già spediti
 		chat_message_t *msg = take_ele(user->msgs);
 		while(msg) {
 			if (msg->consegnato == 0) {

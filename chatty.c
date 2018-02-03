@@ -93,13 +93,13 @@ static void usage(const char *progname) {
 
 //libera la memoria occupata da una richiesta
 void freeRequest(void *data) {
-	if (data) {
-		request_t *tmp = (request_t *)data;
-		if (tmp->message) freeMessage(tmp->message);
+	request_t *tmp = (request_t *)data;
+	if (tmp) {
+		freeMessage(tmp->message);
 		if (tmp->filedata) free(tmp->filedata->buf);
 		free(tmp->filedata);
-		free(tmp);
 	}
+	free(tmp);
 }
 
 //corregge il nome di un file
