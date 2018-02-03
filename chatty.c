@@ -144,7 +144,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				setHeader(&(reply->hdr), TXT_MESSAGE, request->hdr.sender);
-				setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
+				setData(&(reply->data), "", request->data.buf, request->data.hdr.len);
 			}
 		} break;
 
@@ -153,7 +153,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				setHeader(&(reply->hdr), TXT_MESSAGE, request->hdr.sender);
-				setData(&(reply->data), "", request->data.buf, strlen(request->data.buf));
+				setData(&(reply->data), "", request->data.buf, request->data.hdr.len);
 			}
 		} break;
 
@@ -164,7 +164,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				setHeader(&(reply->hdr), FILE_MESSAGE, request->hdr.sender);
-				setData(&(reply->data), "", filename, strlen(filename));
+				setData(&(reply->data), "", filename, strlen(filename)+1);
 			}
 		} break;
 
@@ -180,8 +180,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 		} break;
 
 		case GETPREVMSGS_OP: {
-			ret = OP_FAIL;
-			list = get_history(users, request->hdr.sender, &ret);
+			ret = get_history(users, request->hdr.sender, list);
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				ackData = 1;
@@ -259,9 +258,9 @@ void *worker(void *data) {
 		int fd = work->fd;
 		message_t *request = work->message, *ack, *reply;
 		message_data_t *filedata = work->filedata;
+		free(work);
 		int ret = -1, ackData = 0;
-		queue_t *fds = create_queue(NULL);
-		queue_t *list = create_queue(freeChatMessage);
+		queue_t *fds = create_queue(NULL), *list=create_queue(freeMessage);
 		TRY(ack, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
 		TRY(reply, malloc(sizeof(message_t)), NULL, "malloc", NULL, 0)
 		memset(ack, 0, sizeof(message_t));
@@ -270,6 +269,7 @@ void *worker(void *data) {
 		//eseguo la riichiesta
 		ackData = make_reply(request, filedata, fd, ack, reply, fds, list);
 		if (ackData == -1)
+			//richiesta sconosciuta
 			break;
 		//invio ack
 		C_LOCKFD(fd)
@@ -296,6 +296,8 @@ void *worker(void *data) {
 					for (int i=0; i<fds->len; i++) {
 						rec_fd = *(int *)take_ele(fds);
 						C_LOCKFD(rec_fd)
+					fprintf(stdout, "length %d,  %d\n", reply->hdr.op, reply->data.hdr.len);
+		fflush(stdout);
 						if ((ret2 = sendRequest(rec_fd, reply)) == 0) {
 							set_offline(users, request->hdr.sender, rec_fd);
 							close(rec_fd);
@@ -308,27 +310,25 @@ void *worker(void *data) {
 					}
 				}
 				else if(request->hdr.op == GETPREVMSGS_OP) {
-					chat_message_t *tmp = take_ele(list);
+					message_t *tmp = take_ele(list);
 					while (tmp != NULL) {
 						C_LOCKFD(fd)
-						if (tmp->consegnato == 0) {
-							if ((ret = sendRequest(fd, tmp->message)) <= 0) {
-								C_UNLOCKFD(fd)
-								break;
-							}
-							else {
-								fprintf(stdout, "WOKER %d: Invio vecchio messaggio %s su fd %d\n", id, tmp->message->data.buf, fd);
-							}
+						if ((ret = sendRequest(fd, tmp)) <= 0) {
+							C_UNLOCKFD(fd)
+							break;
+						}
+						else {
+							fprintf(stdout, "WOKER %d: Invio vecchio messaggio %s su fd %d\n", id, tmp->data.buf, fd);
 						}
 						C_UNLOCKFD(fd)
-						freeChatMessage(tmp);
+						freeMessage(tmp);
 						tmp = take_ele(list);
 					}
 				}
 			}
 		}
-		freeMessage(reply);
 		delete_queue(fds);
+		delete_queue(list);
 		//se la connessione è chiusa chiudo il file descriptor...
 		if (ret <= 0) {
 			C_LOCKFD(fd)
@@ -345,8 +345,11 @@ void *worker(void *data) {
 			fprintf(stdout, "WORKER %d: Restituisco fd %d al listener\n", id, fd);
 			UNLOCK(&pipe_lock);
 		}
-		freeMessage(ack);
-		freeRequest(work);
+		//libero l'ack
+		if (request->hdr.op != GETPREVMSGS_OP && ackData) free(ack->data.buf);
+		free(ack);
+		freeMessage(request);
+		free(reply);
 		LOCK(&quit_lock)
 		if (quit) {
 			UNLOCK(&quit_lock)
@@ -377,12 +380,6 @@ void *listener(void *data) {
 		//reimposto il set prima di fare una nuova select
 		n_ready = 0;
 		ready_set = active_set;
-/*		for (int i=0; i<max+1; i++) {*/
-/*			if(FD_ISSET(i, &ready_set)) {*/
-/*			fprintf(stdout, "prima %d\n", i);*/
-/*			fflush(stdout);*/
-/*			}*/
-/*		}*/
 		n_ready = select(max+1, &ready_set, NULL, NULL, NULL);
 		if (n_ready < 0) {
 			perror("select");
@@ -583,7 +580,7 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_un indirizzo;
 	memset(&indirizzo, 0, sizeof(indirizzo));
 	indirizzo.sun_family = AF_UNIX;
-	strncpy(indirizzo.sun_path, conf_data->unix_path, strlen(conf_data->unix_path)+1);
+	strncpy(indirizzo.sun_path, conf_data->unix_path, strlen(conf_data->unix_path));
 
 	// faccio il bind con l'indirizzo estratto dal file di conf
 	TRY(ret, bind(fd_sk, (struct sockaddr *)&indirizzo, sizeof(indirizzo)), -1, "bind", 0, 1)

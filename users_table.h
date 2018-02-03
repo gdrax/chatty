@@ -328,7 +328,7 @@ OP_OK - successo
 OP_FAIL - errore
 OP_NICK_UNKNOWN - username non registrato
 */
-queue_t *get_history(users_table_t *table, char *username, int *retval);
+int get_history(users_table_t *table, char *username, queue_t *list);
 
 /*
 Inserisce in sequenza i nomi degli utenti registrati in una stringa

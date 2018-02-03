@@ -158,16 +158,21 @@ int write_file(int fd, char *buf, int left) {
 }
 
 void store_msg(users_table_t *table, char *sender, char *text, int type, queue_t *q, int status) {
+		fprintf(stdout, "filename2 %s\n", text);
+		fflush(stdout);
 	chat_message_t *new = malloc(sizeof(chat_message_t)), *tmp;
 	new->message = malloc(sizeof(message_t));
+	char *buf = malloc(sizeof(char)*(strlen(text)+1));
+	memset(buf, 0, strlen(text)+1);
+	strncpy(buf, text, strlen(text));
 	setHeader(&(new->message->hdr), type, sender);
-	new->message->data.buf = malloc(sizeof(char)*strlen(text));
-	setData(&(new->message->data), "", text, strlen(text));
+	setData(&(new->message->data), "", buf, strlen(text)+1);
 	new->consegnato = status;
 	insert_ele(q, new);
+	//se supero il massimo elimino il messaggio più vecchio
 	if (q->len > table->history) {
 		tmp = take_ele(q);
-		freeMessage(tmp);
+		freeChatMessage(tmp);
 	}
 }
 
@@ -231,7 +236,7 @@ int add_user(users_table_t *table, char *username, int fd) {
 	chat_user_t *new;
 	TRY(new, malloc(sizeof(chat_user_t)), NULL, "malloc", -1, 1)
 	memset(new->username, 0, MAX_NAME_LENGTH+1);
-	strncpy(new->username, username, strlen(username)+1);
+	strncpy(new->username, username, strlen(username));
 	new->online = -1;
 	if ((new->msgs = create_queue(freeChatMessage)) == NULL) {
 		table->errori++;
@@ -291,14 +296,14 @@ int add_group(users_table_t *table, char *owner, char *groupname) {
 	if (CHECKNAME(table->users, owner, user)) {
 		chat_group_t *new;
 		TRY(new, malloc(sizeof(chat_group_t)), NULL, "malloc", -1, 0)
-		strncpy(new->groupname, groupname, strlen(groupname)+1);
+		strncpy(new->groupname, groupname, strlen(groupname));
 		if ((new->members = createSList(MAX_NAME_LENGTH+1)) == NULL) {
 			table->errori++;
 			UNLOCKGROUP(groupname, table->u_locks, table->g_locks, table->locks)
 			UNLOCKUSER(owner, table->u_locks, table->locks)
 			return OP_FAIL;
 		}
-		strncpy(new->owner, owner, strlen(owner)+1);
+		strncpy(new->owner, owner, strlen(owner));
 		//aggiungo subito il proprietario tra i membri
 		int ret;
 		if ((ret = addString(new->members, new->owner, -1)) == -1) {
@@ -692,6 +697,8 @@ int send_file(users_table_t *table, char *sender, char *receiver, char *filename
 		}
 		else {
 			//creo messaggio
+		fprintf(stdout, "filename %s\n", filename);
+		fflush(stdout);
 			char *filepath = make_path(filename, dirpath);
 			int fd=-1, ret=-1;
 			TRY(fd, open(filepath, O_CREAT | O_RDWR, 0666), -1, "open", -1, 0);
@@ -775,27 +782,33 @@ int get_file(users_table_t *table, char *username, char *filename, char **datade
 }
 
 
-queue_t *get_history(users_table_t *table, char *username, int *retval) {
+int get_history(users_table_t *table, char *username, queue_t *list) {
 	if (!table || !username) {
 		table->errori++;
-		*retval = OP_FAIL;
-		return NULL;
+		return OP_FAIL;
 	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
-	queue_t *ret;
 	if (CHECKNAME(table->users, username, user)) {
 		//prendo i messaggi (nomi di file e testuali) che non sono stati già spediti
-		ret = user->msgs;
+		chat_message_t *msg;
+		msg = take_ele(user->msgs);
+		while(msg) {
+		fprintf(stdout, "filename3 %s\n", msg->message->data.buf);
+		fflush(stdout);
+			if (msg->consegnato == 0)
+				insert_ele(list, msg->message);
+			msg->message = NULL;
+			freeChatMessage(msg);
+			msg = take_ele(user->msgs);
+		}
 		UNLOCKUSER(username, table->u_locks, table->locks)
-		*retval = OP_OK;
-		return ret;
+		return OP_OK;
 	}
 	//user non registrato
 	table->errori++;
 	UNLOCKUSER(username, table->u_locks, table->locks)
-	*retval = OP_NICK_ALREADY;
-	return NULL;
+	return OP_NICK_ALREADY;
 }
 
 char *users_list(users_table_t *table, int *n) {
