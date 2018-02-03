@@ -31,14 +31,15 @@ queue_t *create_queue(void (*free_data)(void*)) {
 }
 
 void delete_queue(queue_t *q) {
-    while(q->head) {
-    Node_t *p = (Node_t*)q->head;
-    q->head = q->head->next;
-    if (*q->free_data && p->data) (*q->free_data)(p->data);
-    freeNode(p);
-    }
-    if (q->head) freeNode(q->head);
-    if (q) free(q);
+	if (q) {
+		while(q->head) {
+			Node_t *p = (Node_t*)q->head;
+			q->head = q->head->next;
+			if (*q->free_data && p->data) (*q->free_data)(p->data);
+			freeNode(p);
+		}
+	free(q);
+	}
 }
 
 int insert_ele(queue_t *q, void *data) {
