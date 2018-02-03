@@ -71,7 +71,6 @@ typedef struct users_table {
 	int m_in_attesa;		//messaggi da consegnare
 	int f_consegnati;		//file consegnati
 	int f_in_attesa;		//file da consegnare
-	int users_online;		//utenti online
 	int errori;			//numero di messaggi di errore del server
 } users_table_t;
 

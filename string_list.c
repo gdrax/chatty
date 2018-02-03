@@ -218,6 +218,7 @@ char * disconnect_fd(string_list_t *list, int fd) {
 		strncpy(name, tmp->data, strlen(tmp->data));
 		corr->next = tmp->next;
 		tmp->next = NULL;
+		list->size--;
 		free(tmp->data);
 		free(tmp);
 	}

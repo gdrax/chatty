@@ -193,7 +193,6 @@ users_table_t *create_table(int u_locks, int g_locks, int fd_locks, int n_bucket
 	table->m_in_attesa = 0;
 	table->f_consegnati = 0;
 	table->f_in_attesa = 0;
-	table->users_online = 0;
 	table->errori = 0;
 	table->max_msg_size = max_msg_size;
 	table->max_file_size = max_file_size;
@@ -416,7 +415,6 @@ int set_online(users_table_t *table, char *username, int fd) {
 		if (ret == 1) {
 			update_fd(table->online_users, username, fd);
 		}
-		table->users_online++;
 		UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 		UNLOCKUSER(username, table->u_locks, table->locks)
 		return OP_OK;
@@ -438,7 +436,6 @@ int set_offline(users_table_t *table, char *username, int fd) {
 	chat_user_t *user;
 	if (CHECKNAME(table->users, username, user)) {
 		user->online = -1;
-		table->users_online--;
 		//rimuovo il descriptor dalla lista online
 		removeString(table->online_users, username);
 		UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
@@ -461,15 +458,13 @@ int set_offline_fd(users_table_t *table, int fd) {
 	LOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
 	username = disconnect_fd(table->online_users, fd);
 	UNLOCKFD(fd, table->u_locks, table->g_locks, table->fd_locks, table->locks)
-	if (username == NULL) {
+	if (username == NULL)
 		return OP_OK;
-	}
 	LOCKUSER(username, table->u_locks, table->locks)
 	chat_user_t *user;
 	//se l'utente è registrato agggiorno le informazioni
 	if (CHECKNAME(table->users, username, user)) {
 		user->online = -1;
-		table->users_online--;
 	}
 	UNLOCKUSER(username, table->u_locks, table->locks)
 	free(username);
@@ -835,7 +830,7 @@ struct statistics *get_stat(users_table_t *table) {
 	LOCKALL(table->locks, table->u_locks+table->g_locks+table->fd_locks)
 	struct statistics *stats = malloc(sizeof(struct statistics));
 	stats->nusers = table->users->nentries;
-	stats->nonline = table->users_online;
+	stats->nonline = table->online_users->size;
 	stats->ndelivered = table->m_consegnati;
 	stats->nnotdelivered = table->m_in_attesa;
 	stats->nfiledelivered = table->f_consegnati;
