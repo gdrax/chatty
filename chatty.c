@@ -494,7 +494,7 @@ void *signal_handler(void *data) {
 			else
 				PRINT("SIGNAL HANDLER: Ricevuto segnale di terminazione, chiudo")
 			UNLOCK(&pipe_lock)
-			break;
+			return NULL;
 		}
 		if (segnale == SIGUSR1) {
 			PRINT("SIGNAL HANDLER: Ricevuto segnale SIGUSR1, stampo statistiche")
@@ -594,10 +594,10 @@ int main(int argc, char *argv[]) {
 	//creo coda delle connessioni
 	pending_requests = create_queue(freeRequest);
 
-/*	//imposto gli attributi dei thread*/
-/*	pthread_attr_t attr;*/
-/*	pthread_attr_init(&attr);*/
-/*	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);*/
+	//imposto gli attributi dei thread
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	//creo struttura da passare ai thread e inizializzo la pipe
 	struct thread_info infos;
@@ -605,7 +605,7 @@ int main(int argc, char *argv[]) {
 	infos.fd_sk = fd_sk;
 
 	//lancio il thread dispatcher
-	CHECK((pthread_create(&th_dispatcher, NULL, dispatcher, &infos) != 0), "Pthread create", 0, 1)
+	CHECK((pthread_create(&th_dispatcher, &attr, dispatcher, &infos) != 0), "Pthread create", 0, 1)
 
 	//lancio il thread listener
 	CHECK((pthread_create(&th_listener, NULL, listener, &infos) != 0), "Pthread create", 0, 1)
