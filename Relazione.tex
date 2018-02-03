@@ -10,12 +10,12 @@
 \subsection{Strutture dati}
 
 \subsubsection{Tabella degli utenti}
-La struttura principale che tiene traccia delle informazioni sugli utenti del server è definita dal tipo \emph{users\_table\_t} definita e implementata nei file \emph{users\_table.h} e \emph{users\_table.c}. Al suo interno memorizza i dati relativi a gruppi e utenti in due tabelle hash (la cui implementazione si trova nei file \emph{icl\_hash.h} e \emph{icl\_hash.c}, entrambi forniti durante il corso. La prima tabella hash contiene elementi di tipo \emph{chat\_user} che modellano un singolo utente registrato, composti da un array di caratteri per rappresentare il nickname, un intero che indica il numero del file descriptor su cui l'utente è attualmente connesso e una lista dei messaggi ricevuti dall'utente (vedi 1.1.2). La seconda tabella contiene la lista dei gruppi creati dagli utenti, rappresentati dalla struttura \emph{chat\_group} che è composta da due array di caratteri (nickname del proprietario e nome del gruppo) e dalla lista dei membri del gruppo (vedi 1.1.3).
+La struttura principale che tiene traccia delle informazioni sugli utenti del server è definita dal tipo \emph{users\_table\_t} definita e implementata nei file \emph{users\_table.h} e \emph{users\_table.c}. Al suo interno memorizza i dati relativi a gruppi e utenti in due tabelle hash (la cui implementazione si trova nei file \emph{icl\_hash.h} e \emph{icl\_hash.c}, entrambi forniti durante il corso. La prima tabella hash contiene elementi di tipo \emph{chat\_user} che modellano un singolo utente registrato, composti da un array di caratteri per rappresentare il nickname, un intero che indica il numero del file descriptor su cui l'utente è attualmente connesso e una coda dei messaggi ricevuti dall'utente (vedi 1.1.2). La seconda tabella contiene la lista dei gruppi creati dagli utenti, rappresentati dalla struttura \emph{chat\_group} che è composta da due array di caratteri (nickname del proprietario e nome del gruppo) e dalla lista dei membri del gruppo (vedi 1.1.3).
 
-La tabella degli utenti fa uso anche di un array di n+m mutex per sincronizzarsi su utenti e gruppi, l'indice con cui vi si accede è calcolato applicando la stessa funzione usata per le tabelle hash modulo n o m . Le prime n posizioni sono riservate alle mutex per gli utenti e le successive m a quelle per i gruppi, in questo modo sono maggiori le possibilià di eseguire più operazioni contemporaneamete. Le procedure per ottenere e rilasciare le lock sono implementate utilizzando alcune macro, in particolare \emph{LOCKINORDER} e \emph{UNLOCKINORDER} confrontano i valori di due nomi in modulo per acquisire/rilasciare le lock in ordine corretto, \emph{LOCKALL} e \emph{UNLOCKALL} acquisiscono/rilasciano tutte le lock dell'array in sequenza.
+La tabella degli utenti fa uso anche di un array di n+m+f mutex per sincronizzarsi rispettivamente su utenti, gruppi e descrittori di file, l'indice con cui vi si accede è calcolato applicando la stessa funzione usata per le tabelle hash modulo n, m o f (nel caso dei dei descrittori viene usato direttamente il valore) . Le prime n posizioni sono riservate alle mutex per gli utenti e le successive m a quelle per i gruppi, in questo modo sono maggiori le possibilià di eseguire più operazioni contemporaneamete. Le procedure per ottenere e rilasciare le lock sono implementate utilizzando alcune macro, in particolare \emph{LOCKINORDER} e \emph{UNLOCKINORDER} confrontano i valori di due nomi in modulo per acquisire/rilasciare le lock in ordine corretto, \emph{LOCKALL} e \emph{UNLOCKALL} acquisiscono/rilasciano tutte le lock dell'array in sequenza.
 
-\subsubsection{Lista dei messaggi}
-Il server mantiene per ogni utente una lista di messaggi (che possono essere testuali o nomi di file) lunga al più MaxHistMsg (specificata nel file di configurazione). La struttura di questa  history è una linked list e si trova nei file \emph{msg\_list.h} e \emph{msg\_list.c}, per ogni messaggio si mantengono due stringhe (contenuto o nome di file e mittente), e due interi (stato di cosegna e tipo). Se viene raggiunto il numero massimo di messaggi memorizzabili si elimina il messaggio più vecchio. L'interfaccia fornisce la funzione \emph{getMsgList} che restituisce una copia dei messaggi non ancora recapitati al destinatario.
+\subsubsection{Code di messaggi, richieste e descrittori}
+Il server utilizza 3 tipi di code, tutte definite in \emph{queue.h} e \emph{queue.c} (i due file sono quelli forniti dai docenti durante il corso, modificati opportunamente togliendo la sincronizzazione interna e aggiungendo una funzione per liberare la memoria). Ogni utente (\emph{chat\_user\_t}) ha una coda di messaggi che rappresenta la sua history, ogni thread worker fa uso inoltre di una coda di interi per ricordarsi i file descriptor a cui deve inviare i messaggi broadcast. L'ultima coda è usata per inviare richieste dal thread \emph{listener} ai \emph{worker} e contiene elementi di tipo \emph{request\_t} composti da un messaggio e un descrittore di file.
 
 \subsubsection{Lista dei membri di un gruppo}
 Per ogni gruppo registrato sul server viene mantenuta la lista dei membri, implementata come linked list di stringhe dai file \emph{string\_list.h} e \emph{string\_list.c}. Per inviare messaggi o file ai membri di un gruppo si recuperano i loro nomi attraverso la funzione \emph{getByIndex} che permette di accedere agli elementi della lista tramite indice. Per evitare di appesantire l'operazione di deregistrazione di un utente, quest'ultimo non viene cancellato immediatamente dai gruppi di cui era membro. Il controllo e l'eventuale rimozione viengono fatti durante l'invio di messaggi a un gruppo.
@@ -27,12 +27,16 @@ Il server utilizza 1 thread per gestire i segnali \emph{signal\_handler} che si 
 
 \subsection{Chat Parser}
 Il main fa anche uso delle funzioni fornite da \emph{chat\_parser.h} e \emph{chat\_parser.c} per recuperare dal file di configurazione le informazioni necessarie per il funzionamento del server. In aggiunta a quelle già previste dal kit del progetto sono state aggiunte:
+
 \begin{tabular}{ll}
 	UserLocks & Numero di mutex utilizzate per sincronizzarsi sugli utenti\\
 	GroupLocks & Numero di mutex utilizzate per sincronizzarsi sui gruppi\\
 	FdLocks & Numero di mutex utilizzate per sincronizzarsi sui descrittori\\
 	Buckets & Numero di buckets per le tabelle hash\\
 \end{tabular}
+
+\section{Terinazione del server}
+Quando il thread signal\_handler riceve il segnale SIGUSR1 scrive un -1 sulla pipe del listener, quando quest'ultimo lo legge invia n messaggi con operazione OP\_END sulla coda dove n è il numero dei thread worker.
 
 
 \section{Script bash}
