@@ -163,10 +163,11 @@ int update_fd(string_list_t *list, char *string, int fd) {
 	s_ele_t *tmp;
 	tmp = list->head;
 	while(tmp != NULL) {
-		if (strcmp(tmp->data, string) == 0)
+		if (strcmp(tmp->data, string) == 0) {
 			tmp->fd = fd;
-		else
-			tmp = tmp->next;
+			break;
+		}
+		tmp = tmp->next;
 	}
 	return 0;
 }
