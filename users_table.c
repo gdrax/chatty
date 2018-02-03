@@ -129,7 +129,7 @@ void freeMessage(void *data) {
 	}
 }
 
-
+//concatena un nome file con l'indirizzo di una directory
 char *make_path(char *filename, char *dirpath) {
 	int len = strlen(filename) + strlen(dirpath) + 2, i=0;
 	char *filepath = malloc(len*sizeof(char));
@@ -144,6 +144,7 @@ char *make_path(char *filename, char *dirpath) {
 	return filepath;
 }
 
+//scrive buffer su un file descriptor
 int write_file(int fd, char *buf, int left) {
 	int ret;
 	while (left > 0) {
@@ -160,6 +161,7 @@ int write_file(int fd, char *buf, int left) {
 //salva un messaggio nella coda di un utente
 void store_msg(users_table_t *table, char *sender, char *text, int type, queue_t *q, int status) {
 	chat_message_t *new = malloc(sizeof(chat_message_t)), *tmp;
+	memset(new, 0, sizeof(chat_message_t));
 	new->message = malloc(sizeof(message_t));
 	char *buf = malloc(sizeof(char)*(strlen(text)+1));
 	memset(buf, 0, strlen(text)+1);
