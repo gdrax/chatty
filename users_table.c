@@ -115,7 +115,7 @@ void freeGroup(void *data) {
 void freeChatMessage(void *data) {
 	if (data) {
 		chat_message_t *tmp = (chat_message_t *)data;
-		if (tmp->message) freeMessage(tmp->message);
+		freeMessage(tmp->message);
 		free(tmp);
 	}
 }
@@ -124,7 +124,7 @@ void freeChatMessage(void *data) {
 void freeMessage(void *data) {
 	if (data) {
 		message_t *tmp = (message_t *)data;
-		if (tmp->data.buf) free(tmp->data.buf);
+		free(tmp->data.buf);
 		free(tmp);
 	}
 }
@@ -157,9 +157,8 @@ int write_file(int fd, char *buf, int left) {
 	return 0;
 }
 
+//salva un messaggio nella coda di un utente
 void store_msg(users_table_t *table, char *sender, char *text, int type, queue_t *q, int status) {
-		fprintf(stdout, "filename2 %s\n", text);
-		fflush(stdout);
 	chat_message_t *new = malloc(sizeof(chat_message_t)), *tmp;
 	new->message = malloc(sizeof(message_t));
 	char *buf = malloc(sizeof(char)*(strlen(text)+1));
@@ -791,14 +790,12 @@ int get_history(users_table_t *table, char *username, queue_t *list) {
 	chat_user_t *user;
 	if (CHECKNAME(table->users, username, user)) {
 		//prendo i messaggi (nomi di file e testuali) che non sono stati già spediti
-		chat_message_t *msg;
-		msg = take_ele(user->msgs);
+		chat_message_t *msg = take_ele(user->msgs);
 		while(msg) {
-		fprintf(stdout, "filename3 %s\n", msg->message->data.buf);
-		fflush(stdout);
-			if (msg->consegnato == 0)
+			if (msg->consegnato == 0) {
 				insert_ele(list, msg->message);
-			msg->message = NULL;
+				msg->message = NULL;
+			}
 			freeChatMessage(msg);
 			msg = take_ele(user->msgs);
 		}

@@ -96,7 +96,8 @@ void freeRequest(void *data) {
 	if (data) {
 		request_t *tmp = (request_t *)data;
 		if (tmp->message) freeMessage(tmp->message);
-		if (tmp->filedata) if (tmp->filedata->buf) free(tmp->filedata->buf);
+		if (tmp->filedata) free(tmp->filedata->buf);
+		free(tmp->filedata);
 		free(tmp);
 	}
 }
@@ -160,6 +161,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 		case POSTFILE_OP: {
 			char *filename = make_name(request->data.buf);
 			ret = send_file(users, request->hdr.sender, request->data.hdr.receiver, filename, filedata->buf, filedata->hdr.len, fds, conf_data->files_path);
+			free(filedata->buf);
 			free(filedata);
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
@@ -296,8 +298,6 @@ void *worker(void *data) {
 					for (int i=0; i<fds->len; i++) {
 						rec_fd = *(int *)take_ele(fds);
 						C_LOCKFD(rec_fd)
-					fprintf(stdout, "length %d,  %d\n", reply->hdr.op, reply->data.hdr.len);
-		fflush(stdout);
 						if ((ret2 = sendRequest(rec_fd, reply)) == 0) {
 							set_offline(users, request->hdr.sender, rec_fd);
 							close(rec_fd);
@@ -418,6 +418,7 @@ void *listener(void *data) {
 								set_offline_fd(users, i);
 								close(i);
 								fprintf(stdout, "LISTENER: Connessione su fd %d chiusa\n", i);
+								freeRequest(new);
 							}
 						}
 						C_UNLOCKFD(i)

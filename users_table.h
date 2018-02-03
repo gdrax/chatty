@@ -45,6 +45,9 @@ typedef struct chat_group {
 	char owner[MAX_NAME_LENGTH+1];		//nome del proprietario del gruppo
 } chat_group_t;
 
+/*
+Struttura per memorizzare un messaggio della history di un utente
+*/
 typedef struct chat_message {
 	message_t *message;
 	int consegnato;

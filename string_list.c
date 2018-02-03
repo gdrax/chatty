@@ -98,6 +98,7 @@ int removeString(string_list_t *list, char *string) {
 		corr->next = tmp->next;
 		tmp->next = NULL;
 		list->size--;
+		free(tmp->data);
 		free(tmp);
 	}
 			fprintf(stdout, "after all 22\n");
@@ -199,6 +200,7 @@ char * disconnect_fd(string_list_t *list, int fd) {
 		strncpy(name, list->head->data, strlen(list->head->data));
 		list->head = list->head->next;
 		list->size--;
+		free(corr->data);
 		free(corr);
 	}
 	else {
@@ -215,6 +217,7 @@ char * disconnect_fd(string_list_t *list, int fd) {
 		strncpy(name, tmp->data, strlen(tmp->data));
 		corr->next = tmp->next;
 		tmp->next = NULL;
+		free(tmp->data);
 		free(tmp);
 	}
 	return name;

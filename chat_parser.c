@@ -114,7 +114,7 @@ int get_config(char *config_path, info_server_t *infos) {
 		}
 		if (strcmp(nome_attr, "StatFileName") == 0) {
 			TRY(infos->stat_path, malloc((strlen(val_attr)+1)*sizeof(char)), NULL, "Malloc", -1, 0)
-			strncpy(infos->stat_path, val_attr, strlen(val_attr));
+			strncpy(infos->stat_path, val_attr, strlen(val_attr)+1);
 			infos->check[7] = 1;
 			continue;
 		}
