@@ -8,6 +8,8 @@
 /**
  * @file chatty.c
  * @brief File principale del server chatterbox
+	\author Bertoncini Gioele 
+	Si dichiara che il contenuto di questo file e' in ogni sua parte opera originale dell'autore
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -31,17 +33,14 @@
 #include "users_table.h"
 #include "string_list.h"
 
+//acquisisce la lock relativa a un file descriptor
 #define C_LOCKFD(fd)						\
 		LOCK(&(fd_locks[fd%conf_data->fd_locks]));
 
+//rilascia la lock relativa a un file descriptor
 #define C_UNLOCKFD(fd)						\
 		UNLOCK(&(fd_locks[fd%conf_data->fd_locks]));
 
-/* struttura che memorizza le statistiche del server, struct statistics 
- * e' definita in stats.h.
- *
-*/
-/*struct statistics chattyStats = { 0,0,0,0,0,0,0 };*/
 
 //parametri passati ai thread
 struct thread_info {
@@ -57,8 +56,8 @@ typedef struct request {
 	int fd;
 } request_t;
 
-//mutex per la sincornizzazione sulle statistiche
-pthread_mutex_t stat_lock = PTHREAD_MUTEX_INITIALIZER;
+//struttura per le statistiche del server
+struct statistics *stats;
 
 //struttura contente le info del file di configurazione
 info_server_t *conf_data;
@@ -69,19 +68,17 @@ queue_t *pending_requests;
 //struttura dati per memorizzare utenti gruppi e messaggi
 users_table_t *users;
 
-//intero per la terminazione dei thread
-int quit = 0;
+//threads
+pthread_t th_listener, th_dispatcher, *workers;
 
-//lock per sincronizzarsi sulla variabile di terminazione
-pthread_mutex_t quit_lock = PTHREAD_MUTEX_INITIALIZER;
-
-//lock e cv per sincronizzarsi sulla coda
+//lock e cv per sincronizzarsi sulla coda delle richieste
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t newRequest;
 
 //array di mutex per sincronizzarsi sui descrittori
 pthread_mutex_t *fd_locks;
 
+//mutex per sincornizzarsi sulla pipe
 pthread_mutex_t pipe_lock = PTHREAD_MUTEX_INITIALIZER;
 
 //uso del server
@@ -236,26 +233,22 @@ void *worker(void *data) {
 	int id = infos.id, fd_pipe = infos.fd_pipe[1];
 	while (1) {
 		LOCK(&queue_lock)
-		LOCK(&quit_lock)
-		while(pending_requests->len == 0 || quit) {
-			if (quit) {
-				UNLOCK(&quit_lock)
-				UNLOCK(&queue_lock)
-				fprintf(stdout, "WOKER %d: Ricevuto segnale di terminazione, chiudo\n", id);
-				return NULL;
-			}
-			else {
-				UNLOCK(&quit_lock)
-			}
+		while(pending_requests->len == 0) {
 			fprintf(stdout, "WORKER %d: Mi sospendo su newRequest\n", id);
 			CHECK((pthread_cond_wait(&newRequest, &queue_lock) != 0), "Pthread wait", NULL, 1)
-			LOCK(&quit_lock)
 		}
 		//prendo una richiesta dalla coda
-		UNLOCK(&quit_lock)
 		request_t *work = (request_t *)take_ele(pending_requests);
 		UNLOCK(&queue_lock)
 		if (work == NULL) continue;
+		//controllo se ho letto il segnale di chiusura
+		if (work->message->hdr.op == OP_END) {
+			free(work->message);
+			free(work);
+			fprintf(stdout, "WOKER %d: Ricevuto segnale di terminazione, chiudo\n", id);
+			fflush(stdout);
+			return NULL;
+		}
 		fprintf(stdout, "WOKER %d: Trovata nuova richiesta su fd %d\n", id, work->fd);
 		int fd = work->fd;
 		message_t *request = work->message, *ack, *reply;
@@ -329,16 +322,16 @@ void *worker(void *data) {
 		}
 		delete_queue(fds);
 		delete_queue(list);
-		//se la connessione è chiusa chiudo il file descriptor...
-		if (ret <= 0) {
+		//se la connessione è chiusa o si sono verificati errori chiudo il file descriptor...
+		if (ret <= 0 || ack->hdr.op > 23) {
 			C_LOCKFD(fd)
 			set_offline(users, request->hdr.sender, fd);
 			close(fd);
 			fprintf(stdout, "WORKER %d: Connessione su fd %d chiusa\n", id, fd);
 			C_UNLOCKFD(fd)
 		}
-		//...altrimenti se non si sono verificati errori rimetto il file descriptor in coda
-		else if (ack->hdr.op < 23) {
+		//...altrimenti rimetto il file descriptor in coda
+		else {
 			LOCK(&pipe_lock)
 			if ((write(fd_pipe, &fd, sizeof(int))) != sizeof(int))
 				perror("write sulla pipe");
@@ -350,13 +343,6 @@ void *worker(void *data) {
 		free(ack);
 		freeMessage(request);
 		free(reply);
-		LOCK(&quit_lock)
-		if (quit) {
-			UNLOCK(&quit_lock)
-			fprintf(stdout, "WOKER %d: Ricevuto segnale di terminazione, chiudo\n", id);
-			return NULL;
-		}
-		UNLOCK(&quit_lock)
 	}
 	return NULL;
 }
@@ -370,13 +356,6 @@ void *listener(void *data) {
 	FD_SET(fd_pipe, &active_set);
 	if (fd_pipe > max) max = fd_pipe;
 	while(1) {
-		LOCK(&quit_lock)
-		if (quit) {
-			UNLOCK(&quit_lock)
-			PRINT("LISTENER: Ricevuto segnale di terminazione, chiudo")
-			break;
-		}
-		UNLOCK(&quit_lock)
 		//reimposto il set prima di fare una nuova select
 		n_ready = 0;
 		ready_set = active_set;
@@ -391,16 +370,34 @@ void *listener(void *data) {
 					int new_fd = -1;
 					LOCK(&pipe_lock)
 					//leggo dalla pipe
-					if ((read(fd_pipe, &new_fd, sizeof(int))) != sizeof(int))
+					if ((read(fd_pipe, &new_fd, sizeof(int))) != sizeof(int)) {
+						UNLOCK(&pipe_lock)
 						perror("read sulla pipe");
-					else {
-						PRINT("LISTENER: Aggiorno set")
-						if (new_fd > max) max = new_fd;
-						FD_SET(new_fd, &active_set);
 					}
-					UNLOCK(&pipe_lock);
+					else {
+						UNLOCK(&pipe_lock);
+						if (new_fd == -100) {
+							//segnale di chiusura
+							for (int j=0; j<conf_data->th_in_pool; j++) {
+								request_t *new = malloc(sizeof(request_t));
+								new->message = malloc(sizeof(message_t));
+								new->message->hdr.op = OP_END;
+								LOCK(&queue_lock)
+								insert_ele(pending_requests, new);
+								PRINT("LISTENER: Invio segnale di terminazione")
+								pthread_cond_signal(&newRequest);
+								UNLOCK(&queue_lock)
+							}
+							return NULL;
+						}
+						else {//nuovo descrittore da monitorare
+							PRINT("LISTENER: Aggiorno set")
+							if (new_fd > max) max = new_fd;
+							FD_SET(new_fd, &active_set);
+						}
+					}
 				}
-				else {//se il descrittore di un client è pronto, leggo la richiesta e la inserisco in coda
+				else {//descrittore di un client pronto, leggo la richiesta e la inserisco in coda
 					FD_CLR(i, &active_set);
 					request_t *new = malloc(sizeof(request_t));
 					memset(new, 0, sizeof(request_t));
@@ -415,6 +412,7 @@ void *listener(void *data) {
 							new->filedata = malloc(sizeof(message_data_t));
 							memset(new->filedata, 0, sizeof(message_data_t));
 							if ((readData(i, new->filedata)) <= 0) {
+								//client ha chiuso la connessione
 								set_offline_fd(users, i);
 								close(i);
 								fprintf(stdout, "LISTENER: Connessione su fd %d chiusa\n", i);
@@ -430,7 +428,7 @@ void *listener(void *data) {
 						pthread_cond_signal(&newRequest);
 						UNLOCK(&queue_lock)
 					}
-					else {
+					else {//client ha chiuso la connessione
 						C_UNLOCKFD(i)
 						set_offline_fd(users, i);
 						close(i);
@@ -450,13 +448,6 @@ void *dispatcher(void *data) {
 	int fd_sk = infos.fd_sk, fd_pipe = infos.fd_pipe[1];
 	PRINT("SERVER: Thread dispatcher avviato")
 	while(1) {
-		LOCK(&quit_lock)
-		if (quit) {
-			UNLOCK(&quit_lock)
-			PRINT("DISPATCHER: Ricevuto segnale di terminazione, chiudo")
-			break;
-		}
-		UNLOCK(&quit_lock)
 		int ret;
 		//aspetto che un nuovo client si connetta
 		ret = accept(fd_sk, NULL, 0);
@@ -479,8 +470,8 @@ void *dispatcher(void *data) {
 }
 
 void *signal_handler(void *data) {
-
-	char *stat_path = (char *)data;
+	struct thread_info infos = *(struct thread_info *)data;
+	int fd_pipe = infos.fd_pipe[1];
 	sigset_t segnali;
 	int ret, segnale;
 	TRY(ret, sigemptyset(&segnali), -1, "Sigemptyset", 0, 1)
@@ -496,20 +487,20 @@ void *signal_handler(void *data) {
 		if (ret > 0)
 			perror("sigwait");
 		if (segnale == SIGTERM || segnale == SIGQUIT || segnale == SIGINT) {
-			PRINT("SERVER: Ricevuto segnale di terminazione, chiudo")
-			LOCK(&quit_lock)
-			quit = 1;
-			UNLOCK(&quit_lock)
-			pthread_cond_broadcast(&newRequest);
-			pthread_cond_broadcast(&newRequest);
+			int quit = -100;
+			LOCK(&pipe_lock)
+			if ((write(fd_pipe, &quit, sizeof(int))) != sizeof(int))
+				perror("write sulla pipe");
+			else
+				PRINT("SIGNAL HANDLER: Ricevuto segnale di terminazione, chiudo")
+			UNLOCK(&pipe_lock)
 			break;
 		}
 		if (segnale == SIGUSR1) {
-			PRINT("SERVER: Ricevuto segnale SIGUSR1, stampo statistiche")
-			LOCK(&stat_lock)
-			struct statistics *stats = get_stat(users);
+			PRINT("SIGNAL HANDLER: Ricevuto segnale SIGUSR1, stampo statistiche")
+			stats = get_stat(users);
 			FILE *fd;
-			if ((fd = fopen(stat_path, "a")) == NULL) {
+			if ((fd = fopen(conf_data->stat_path, "a")) == NULL) {
 				perror("fopen");
 			}
 			else {
@@ -517,7 +508,6 @@ void *signal_handler(void *data) {
 				fclose(fd);
 			}
 			free(stats);
-			UNLOCK(&stat_lock)
 			continue;
 		}
 	}
@@ -604,54 +594,47 @@ int main(int argc, char *argv[]) {
 	//creo coda delle connessioni
 	pending_requests = create_queue(freeRequest);
 
-	//imposto gli attributi dei thread
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
 	//creo struttura da passare ai thread e inizializzo la pipe
 	struct thread_info infos;
 	CHECK((pipe(infos.fd_pipe) == -1), "pipe", 0, 1);
 	infos.fd_sk = fd_sk;
 
 	//lancio il thread dispatcher
-	pthread_t th_dispatcher;
-	CHECK((pthread_create(&th_dispatcher, &attr, dispatcher, &infos) != 0), "Pthread create", 0, 1)
+	CHECK((pthread_create(&th_dispatcher, NULL, dispatcher, &infos) != 0), "Pthread create", 0, 1)
 
 	//lancio il thread listener
-	pthread_t th_listener;
-	CHECK((pthread_create(&th_listener, &attr, listener, &infos) != 0), "Pthread create", 0, 1)
+	CHECK((pthread_create(&th_listener, NULL, listener, &infos) != 0), "Pthread create", 0, 1)
 
 	// lancio i thread worker
-	pthread_t *workers;
 	TRY(workers, malloc(conf_data->th_in_pool*sizeof(pthread_t)), NULL, "main chatty malloc", 0, 1)
 	for (int i=0, k=0; i<conf_data->th_in_pool; i++, k++) {
 		infos.id = k;
-		CHECK((pthread_create(&workers[i], &attr, worker, &infos) != 0), "Pthread create", 0, 1)
+		CHECK((pthread_create(&workers[i], NULL, worker, &infos) != 0), "Pthread create", 0, 1)
 	}
 	PRINT("SERVER: Threads avviati")
 
 	//lancio thread gestore dei segnali
 	pthread_t th_signal_handler;
-	CHECK((pthread_create(&th_signal_handler, NULL, signal_handler, conf_data->stat_path) != 0), "Pthread create", 0, 1)
+	CHECK((pthread_create(&th_signal_handler, NULL, signal_handler, &infos) != 0), "Pthread create", 0, 1)
 
 /*----------------TERMINAZIONE DEI THREAD----------------*/
-	pthread_join(th_signal_handler, NULL);
-
-	for (int i=0; i>conf_data->th_in_pool; i++) {
-//		pthread_detach(workers[i]);
+	pthread_join(th_listener, NULL);
+	fprintf(stdout, "SERVER: Thread listener terminato\n");
+	for (int i=0; i<conf_data->th_in_pool; i++) {
+		PRINT("SARGIO")
 		pthread_join(workers[i], NULL);
 		PRINT("SERVER: Thread worker terminato")
 	}
-	pthread_join(th_listener, NULL);
+	pthread_join(th_signal_handler, NULL);
+	pthread_detach(th_dispatcher);
 	pthread_cancel(th_dispatcher);
-
 	fprintf(stdout, "SERVER: Thread temrinati\n");
 	free(workers);
 
 /*----------------CANCELLAZIONE STRUTTURE DATI----------------*/
 	destroy_table(users);
-	delete_queue(pending_requests);
+	free(pending_requests->head);
+	free(pending_requests);
 	free(fd_locks);
 	free_config(conf_data);
 	fflush(stdout);

@@ -16,17 +16,6 @@ struct statistics {
 
 /* aggiungere qui altre funzioni di utilita' per le statistiche */
 
-/*struct statistics *create_stats() {*/
-/*	struct statistics *stats = malloc(sizeof(struct statistics));*/
-/*	stats->nusers = 0;*/
-/*	stats->nonline = 0;*/
-/*	stats->ndelivered = 0;*/
-/*	stats->nnotdelivered = 0;*/
-/*	stats->nfiledelivered = 0;*/
-/*	stats->nfilenotdelivered = 0;*/
-/*	stats->nerrors = 0;*/
-/*	return stats;*/
-/*}*/
 /**
  * @function printStats
  * @brief Stampa le statistiche nel file passato come argomento

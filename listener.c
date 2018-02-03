@@ -1,5 +1,5 @@
 /*
-copia del file chat_parser.c necessaria per completaria per completare un test
+copia del file chat_parser.c necessaria per completare test3
 */
 
 #define LINE_SIZE 501

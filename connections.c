@@ -4,6 +4,9 @@
  * Dipartimento di Informatica Università di Pisa
  * Docenti: Prencipe, Torquati
  * 
+	\file connections.c
+	\author Bertoncini Gioele 
+	Si dichiara che il contenuto di questo file e' in ogni sua parte opera originale dell'autore
  */
 
 #include <sys/socket.h>

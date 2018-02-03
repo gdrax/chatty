@@ -14,7 +14,6 @@
 #define CONFIG_H_
 
 #define MAX_NAME_LENGTH                  32
-#define MAX_MSG_LENGTH			140
 
 /* aggiungere altre define qui */
 

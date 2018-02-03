@@ -11,13 +11,13 @@
 #include <stdlib.h>
 #include "utility.h"
 
+//stampa il contenuto della lista
 void printSList(string_list_t *list) {
 	if (!list)
 		return;
 	s_ele_t *tmp = list->head;
 	while(tmp != NULL) {
 		fprintf(stdout, "fd: %d 	nick: %s\n", tmp->fd, tmp->data);
-		fflush(stdout);
 		tmp = tmp->next;
 	}
 }
@@ -101,10 +101,6 @@ int removeString(string_list_t *list, char *string) {
 		free(tmp->data);
 		free(tmp);
 	}
-			fprintf(stdout, "after all 22\n");
-			fflush(stdout);
-printSList(list);
-
 	return 0;
 }
 
@@ -145,18 +141,6 @@ int getByIndex(string_list_t *list, int index, char *string) {
 	return -1;
 }
 
-/*
-Cambia il descrittore di file associato a una stringa
-
-param:
-list - lista già inizializzata
-string - stringa asociata
-fd - nuovo descrittore
-
-retval:
--1 - errore
-0 - successo
-*/
 int update_fd(string_list_t *list, char *string, int fd) {
 	if (list == NULL || string == NULL)
 		return -1;
@@ -171,18 +155,6 @@ int update_fd(string_list_t *list, char *string, int fd) {
 	}
 	return 0;
 }
-/*
-Rimuove la stringa associata ad un descrittore e la restituisce
-
-param:
-list - lista già inizializzata
-fd - descrittore da rimuovere
-
-retval:
-NULL: errore
-stringa associata al descrittore: successo
-*/
-
 
 char * disconnect_fd(string_list_t *list, int fd) {
 	if (list == NULL)

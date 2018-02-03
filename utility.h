@@ -15,7 +15,6 @@
 Se il comando chiamato 'cmd' restituisce 'check' viene stampato il messaggio 'msg' con errno,
 se 'exit' non è 0 termina il programma, altrimenti ritorna il valore 'out'
 */
-
 #define TRY(ret, cmd, check, msg, out, quit)							\
 		if ((ret = cmd) == check) { 						\
 			fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);	\
@@ -40,13 +39,13 @@ se 'exit' non è 0 termina il programma, altrimenti ritorna il valore 'out'
 /*
 Stampa un messaggio sullo standard out con nome del file e numero di riga
 */
-
 #define PRINT(msg)									\
 		fflush(stdout);							\
 		fflush(stderr);							\
 		fprintf(stdout, "File: %s, line: %d ---> %s\n", __FILE__, __LINE__, msg);
 
-/*sincronizzazione*/
+
+/*acquisisce una lock*/
 #define LOCK(lock)									\
 		if (pthread_mutex_lock(lock) != 0) {					\
 			fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);	\
@@ -54,6 +53,7 @@ Stampa un messaggio sullo standard out con nome del file e numero di riga
 			exit(EXIT_FAILURE);						\
 		}
 
+/*rilascia una lock*/
 #define UNLOCK(lock)									\
 		if (pthread_mutex_unlock(lock) != 0) {					\
 			fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);	\

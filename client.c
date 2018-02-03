@@ -199,7 +199,7 @@ static int execute_requestreply(int connfd, operation_t *o) {
 	switch(msg.hdr.op) {
 	case OP_OK:  ackok = 1;     break;
 	case TXT_MESSAGE:
-	case FILE_MESSAGE: {  	    fprintf(stdout, "------------------------------------>sargio\n");
+	case FILE_MESSAGE: {
 	    /* Non ho ricevuto la risposta ma messaggi da altri client, 
 	     * li conservo in MSGS per gestirli in seguito.
 	     */
@@ -243,7 +243,6 @@ static int execute_requestreply(int connfd, operation_t *o) {
 	}	
 	// numero di messaggi che devo ricevere
 	size_t nmsgs = *(size_t*)(msg.data.buf); 
-	fprintf(stdout, "nmssgs %d\n", nmsgs); fflush(stdout);
 	char *FILENAMES[nmsgs]; // NOTA: si suppone che nmsgs non sia molto grande
 	size_t nfiles=0;
 	for(size_t i=0;i<nmsgs;++i) {

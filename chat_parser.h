@@ -38,9 +38,11 @@ retval:
 int get_config(char *config_path, info_server_t *infos);
 
 /*
-Libera la memoria occuoata dalla struct
-*/
+Libera la memoria occupata dalla struct
 
+param:
+infos: struct da liberare
+*/
 void free_config(info_server_t *infos);
 
 #endif
