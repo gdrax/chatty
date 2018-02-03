@@ -31,7 +31,7 @@ queue_t *create_queue(void (*free_data)(void*)) {
 }
 
 void delete_queue(queue_t *q) {
-    while(q->head != q->tail) {
+    while(q->head) {
     Node_t *p = (Node_t*)q->head;
     q->head = q->head->next;
     if (*q->free_data && p->data) (*q->free_data)(p->data);
