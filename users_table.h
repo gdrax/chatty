@@ -49,7 +49,9 @@ typedef struct chat_group {
 Struttura per memorizzare un messaggio della history di un utente
 */
 typedef struct chat_message {
-	message_t *message;
+	char sender[MAX_NAME_LENGTH+1];
+	char *text;
+	int type;
 	int consegnato;
 } chat_message_t;
 

@@ -110,7 +110,7 @@ void freeGroup(void *data) {
 //libera un chat_message
 void freeChatMessage(void *data) {
 		chat_message_t *tmp = (chat_message_t *)data;
-		if (tmp) freeMessage(tmp->message);
+		if (tmp) free(tmp->text);
 		free(tmp);
 }
 
@@ -154,13 +154,12 @@ int write_file(int fd, char *buf, int left) {
 void store_msg(users_table_t *table, char *sender, char *text, int type, queue_t *q, int status) {
 	chat_message_t *new = malloc(sizeof(chat_message_t)), *tmp;
 	memset(new, 0, sizeof(chat_message_t));
-	new->message = malloc(sizeof(message_t));
-	char *buf = malloc(sizeof(char)*(strlen(text)+1));
-	memset(buf, 0, strlen(text)+1);
-	strncpy(buf, text, strlen(text));
-	setHeader(&(new->message->hdr), type, sender);
-	setData(&(new->message->data), "", buf, strlen(text)+1);
+	new->text = malloc(sizeof(char)*(strlen(text)+1));
+	memset(new->text, 0, strlen(text));
+	strncpy(new->text, text, strlen(text));
+	strncpy(new->sender, sender, strlen(text));
 	new->consegnato = status;
+	new->type = type;
 	insert_ele(q, new);
 	//se supero il massimo elimino il messaggio più vecchio
 	if (q->len > table->history) {
@@ -782,8 +781,13 @@ int get_history(users_table_t *table, char *username, queue_t *list) {
 		chat_message_t *msg = take_ele(user->msgs);
 		while(msg) {
 			if (msg->consegnato == 0) {
-				insert_ele(list, msg->message);
-				msg->message = NULL;
+				message_t *new = malloc(sizeof(message_t));
+				char *buf = malloc(sizeof(char)*strlen(msg->text)+1);
+				memset(buf, 0, strlen(msg->text)+1);
+				strncpy(buf, msg->text, strlen(msg->text));
+				setHeader(&(new->hdr), msg->type, msg->sender);
+				setData(&(new->data), "", buf, strlen(msg->text)+1);
+				insert_ele(list, new);
 			}
 			freeChatMessage(msg);
 			msg = take_ele(user->msgs);
