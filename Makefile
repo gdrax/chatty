@@ -198,18 +198,18 @@ test6:
 
 # target per la consegna
 consegna:
-	make test1
-	sleep 3
-	make test2
-	sleep 3
-	make test3
-	sleep 3
-	make test4
-	sleep 3
-	make test5
-	sleep 3
-	make test6
-	sleep 3
+#	make test1
+#	sleep 3
+#	make test2
+#	sleep 3
+#	make test3
+#	sleep 3
+#	make test4
+#	sleep 3
+#	make test5
+#	sleep 3
+#	make test6
+#	sleep 3
 	tar -cvf $(TARNAME)_$(CORSO)_chatty.tar $(FILE_DA_CONSEGNARE) 
 	@echo "*** TAR PRONTO $(TARNAME)_$(CORSO)_chatty.tar "
 	@echo "Per la consegna seguire le istruzioni specificate nella pagina del progetto:"

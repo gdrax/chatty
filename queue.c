@@ -56,9 +56,15 @@ void *take_ele(queue_t *q) {
     if (!q->head->next) return NULL;
     Node_t *n  = (Node_t *)q->head;
     void *data = (q->head->next)->data;
+    q->head->data = NULL;
     q->head    = q->head->next;
     q->len   -= 1;
     assert(q->len>=0);
+    if (q->len == 0) {
+	q->head->data = NULL;
+	q->head->next = NULL;
+	q->tail = q->head;
+    }
     freeNode(n);
     return data;
 } 
