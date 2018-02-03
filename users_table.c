@@ -191,6 +191,12 @@ users_table_t *create_table(int u_locks, int g_locks, int fd_locks, int n_bucket
 	table->g_locks = g_locks;
 	table->fd_locks = fd_locks;
 	table->history = history;
+	table->m_consegnati = 0;
+	table->m_in_attesa = 0;
+	table->f_consegnati = 0;
+	table->f_in_attesa = 0;
+	table->users_online = 0;
+	table->errori = 0;
 	table->max_msg_size = max_msg_size;
 	table->max_file_size = max_file_size;
 	return table;

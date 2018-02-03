@@ -43,20 +43,21 @@
 */
 /*struct statistics chattyStats = { 0,0,0,0,0,0,0 };*/
 
+//parametri passati ai thread
 struct thread_info {
 	int fd_pipe[2];
 	int fd_sk;
 	int id;
 };
 
-
+//strutture delle richieste passate dal listener ai worker
 typedef struct request {
 	message_t *message;
 	message_data_t *filedata;
 	int fd;
 } request_t;
 
-
+//mutex per la sincornizzazione sulle statistiche
 pthread_mutex_t stat_lock = PTHREAD_MUTEX_INITIALIZER;
 
 //struttura contente le info del file di configurazione
@@ -83,11 +84,14 @@ pthread_mutex_t *fd_locks;
 
 pthread_mutex_t pipe_lock = PTHREAD_MUTEX_INITIALIZER;
 
+//uso del server
 static void usage(const char *progname) {
     fprintf(stderr, "Il server va lanciato con il seguente comando:\n");
     fprintf(stderr, "  %s -f conffile\n", progname);
 }
 
+
+//libera la memoria occupata da una richiesta
 void freeRequest(void *data) {
 	if (data) {
 		request_t *tmp = (request_t *)data;
@@ -97,6 +101,7 @@ void freeRequest(void *data) {
 	}
 }
 
+//corregge il nome di un file
 char *make_name(char *name) {
 	int len = strlen(name);
 	for (int i=len-1; i >=0; i--)
@@ -105,6 +110,7 @@ char *make_name(char *name) {
 	return name;
 }
 
+//legge il tipo di richiesta e produce un opportuna risposta
 int make_reply (message_t *request, message_data_t *filedata, int fd, message_t *ack, message_t *reply, queue_t *fds, queue_t *list) {
 	int ret = OP_FAIL;
 	int ackData = 0;
@@ -154,6 +160,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 		case POSTFILE_OP: {
 			char *filename = make_name(request->data.buf);
 			ret = send_file(users, request->hdr.sender, request->data.hdr.receiver, filename, filedata->buf, filedata->hdr.len, fds, conf_data->files_path);
+			free(filedata);
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				setHeader(&(reply->hdr), FILE_MESSAGE, request->hdr.sender);
@@ -174,7 +181,7 @@ int make_reply (message_t *request, message_data_t *filedata, int fd, message_t 
 
 		case GETPREVMSGS_OP: {
 			ret = OP_FAIL;
-			get_history(users, request->hdr.sender, &ret);
+			list = get_history(users, request->hdr.sender, &ret);
 			setHeader(&(ack->hdr), ret, "CHATTY");
 			if (ret == OP_OK) {
 				ackData = 1;
@@ -314,7 +321,7 @@ void *worker(void *data) {
 							}
 						}
 						C_UNLOCKFD(fd)
-						freeMessage(tmp);
+						freeChatMessage(tmp);
 						tmp = take_ele(list);
 					}
 				}
@@ -322,7 +329,6 @@ void *worker(void *data) {
 		}
 		freeMessage(reply);
 		delete_queue(fds);
-		delete_queue(list);
 		//se la connessione è chiusa chiudo il file descriptor...
 		if (ret <= 0) {
 			C_LOCKFD(fd)
@@ -512,6 +518,7 @@ void *signal_handler(void *data) {
 				printStats(fd, stats);
 				fclose(fd);
 			}
+			free(stats);
 			UNLOCK(&stat_lock)
 			continue;
 		}
