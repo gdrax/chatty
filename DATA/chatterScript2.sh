@@ -1,6 +1,5 @@
 #! /bin/bash
 
-##### Commentare i remove dei file tmp per debug
 
 if [ $# == 0 ]; then
 	echo "Usage: chatterScript [FILE] [MINUTES]"
@@ -18,7 +17,6 @@ else
 
 	word=DirName
 
-#seleziono le linee che contengono DirName, =, /
 	directory=$(grep "^[^#]" $1 | grep $word | tr -d " "| tr -d "	" | cut -f 2 -s -d "=")
 
 
@@ -52,4 +50,4 @@ else
 		exit 0
 	fi
 fi
-#FUNZIONANTE
+
